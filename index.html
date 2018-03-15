@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Lightmap</title>
+		<style>
+		body{
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+		}
+		</style>
+	</head>
+	<body>
+		
+	</body>
+
+
+    <script src="./three.min.js"></script>
+    <script src="./LightMapRender.js"></script>
+    <script>
+    	var camera, scene, renderer;
+
+
+		renderer = new THREE.WebGLRenderer();
+		renderer.setPixelRatio( window.devicePixelRatio );
+		renderer.setSize( window.innerWidth, window.innerHeight );
+		renderer.shadowMap.enabled = true;
+		renderer.shadowMap.type = THREE.PCFSoftShadowMap; // default THREE.PCFShadowMap
+
+		document.body.appendChild( renderer.domElement );
+
+
+		camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 2000 );
+		camera.position.z = 4;
+
+		var lightMapRenderer;
+		var loader = new THREE.ObjectLoader();
+		loader.load("./scene.json", function ( obj ) {
+		 	scene = obj;
+			var ambient = new THREE.AmbientLight( 0x444444 );
+			scene.add( ambient );
+			lightMapRenderer = new LightMapRenderer(scene, renderer);
+			animate();
+		} );
+
+
+		function animate() {
+			requestAnimationFrame( animate );
+			render();
+		}
+
+		function render() {
+			renderer.render( scene, camera );
+		}
+
+    </script>
+
+</html>

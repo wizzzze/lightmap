@@ -165,24 +165,27 @@
 				"material": "3F4BED2E-B818-42DE-B4D3-649D1B6EDDC5"
 			},
 			{
-				"uuid": "4D24361A-74B0-40BA-BF86-CBBA794736C3",
-				"type": "DirectionalLight",
-				"name": "DirectionalLight",
+				"uuid": "F4BFE7F2-16EF-455D-A9C5-255D031657FB",
+				"type": "PointLight",
+				"name": "PointLight",
 				"castShadow": true,
-				"matrix": [1,0,0,0,0,1,0,0,0,0,1,0,5,10,7.5,1],
+				"matrix": [1,0,0,0,0,1,0,0,0,0,1,0,1.208294,1.528524,1.936134,1],
 				"color": 16777215,
 				"intensity": 1,
+				"distance": 0,
+				"decay": 1,
 				"shadow": {
 					"camera": {
-						"uuid": "8F7B2E39-88AE-40B2-82F7-EE00070335C0",
-						"type": "OrthographicCamera",
+						"uuid": "2A6C1687-6BD4-4C3E-BEFF-28B85A0F0C4F",
+						"type": "PerspectiveCamera",
+						"fov": 90,
 						"zoom": 1,
-						"left": -5,
-						"right": 5,
-						"top": 5,
-						"bottom": -5,
 						"near": 0.5,
-						"far": 500
+						"far": 500,
+						"focus": 10,
+						"aspect": 1,
+						"filmGauge": 35,
+						"filmOffset": 0
 					}
 				}
 			}],

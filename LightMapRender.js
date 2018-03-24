@@ -1,12 +1,23 @@
 var LightMapRenderer = function(scene, renderer){
-	this.scene = scene;
-	this.renderer = renderer;
-	this.shadowMapSize = new THREE.Vector2(512, 512);
-	this._gl = renderer.context;
+	this.scene = scene.clone();
+	this.renderer = new THREE.WebGLRenderer();
+
+	this.renderer.setSize(512 ,512);
+	this.renderer.domElement.style.position = "absolute";
+	this.renderer.domElement.style.bottom = "0";
+	this.renderer.setClearColor(new THREE.Color(0,0,0), 1);
+	document.body.appendChild(this.renderer.domElement);
+
+	this.viewScene = new THREE.Scene();
+	this.viewCamera = new THREE.
 }
 
 
 LightMapRenderer.prototype = {
+
+	genUV2 : function(){
+
+	}
 
 	render : function(){
 		var scene = this.scene;

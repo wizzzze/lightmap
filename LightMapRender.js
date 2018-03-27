@@ -24,6 +24,29 @@ var LightMapRenderer = function(scene, renderer){
 
 	this.viewQuad = new THREE.Mesh(quad, this.material);
 	this.viewScene.add(this.viewQuad);
+
+	this.frame = { value : 1 };
+
+
+	this.merageScene = new THREE.Scene();
+	var merageQuad = new THREE.PlaneBufferGeometry( 2 , 2 );
+	this.merageFrame = 1;
+
+	this.merageMaterial = new THREE.ShaderMaterial({
+		uniforms : {
+			buffer1 : { value : null },
+			buffer2 : { value : null },
+			res : { value : new THREE.Vector2(512, 512)},
+			frame : { value : this.merageFrame } 
+		},
+		vertexShader : ShaderLib.debugVertexShader,
+		FragmentShader : ShaderLib.merageFragmentShader
+	});
+
+	this.merageQuad = new THREE.Mesh(merageQuad, this.merageMaterial);
+
+	this.merageScene.add(this.merageQuad);
+
 }
 
 
@@ -99,7 +122,7 @@ LightMapRenderer.prototype = {
 
 
 			// nor = (new THREE.Vector3(normals.array[i1*3], normals.array[i1*3+1], normals.array[i1*3+2];)).applyMatrix4 ( worldMatrix );
-			nor = [normals.array[i1*3], normals.array[i1*3+1], normals.array[i1*3+2]];
+			nor = this.localToWorld( [normals.array[i1*3], normals.array[i1*3+1], normals.array[i1*3+2]], worldMatrix );
 			uv21 = [uv2.array[i1*2], uv2.array[i1*2+1]];
 			uv22 = [uv2.array[i2*2], uv2.array[i2*2+1]];
 			uv23 = [uv2.array[i3*2], uv2.array[i3*2+1]];
@@ -132,7 +155,6 @@ LightMapRenderer.prototype = {
 			uv22 : new THREE.Vector2(uv22[0], uv22[1]),
 			uv23 : new THREE.Vector2(uv23[0], uv23[1]),
 		};
-		console.log(tri);
 		return tri;
 
 	},
@@ -180,13 +202,90 @@ LightMapRenderer.prototype = {
 		this.renderer.render(this.scene, this.viewCamera, this.directLightMapBuffer);
 
 		this.material.uniforms.buffer.value = this.directLightMapBuffer.texture;
-
 		this.renderer.render(this.viewScene, this.viewCamera);
 
-		return this.directLightMapBuffer.texture;
+		this.lightMapBuffer = this.directLightMapBuffer;
+
+		//indirectlight pass;
+
+		var indirectLightMapMaterial = new THREE.ShaderMaterial({
+			uniforms : {
+				resolution :{ value : new THREE.Vector2(512, 512)},
+				frame : this.frame,
+				lightBuffer : { value : this.lightMapBuffer.texture},
+				tris : { 
+					value : this.uniforms
+				},
+			},
+			vertexShader : ShaderLib.vertexShader,
+			fragmentShader : ShaderLib.lightMapFragmentShader2,
+		});
+
+		for(var i = 0, l = this.scene.children.length; i < l; i++ ){
+			child = this.scene.children[i];
+			if(child.isMesh){
+				child.material = indirectLightMapMaterial;
+			}
+		}
+
+		this.writeBuffer = new THREE.WebGLRenderTarget( 512, 512, {
+			wrapS: THREE.RepeatWrapping,
+			wrapT: THREE.RepeatWrapping,
+			minFilter: THREE.NearestFilter,
+			magFilter: THREE.NearestFilter,
+			format: THREE.RGBAFormat,
+			type: THREE.FloatType,
+			stencilBuffer: false,
+			depthBuffer: false
+		});
+
+
+		this.lightWriteBuffer = this.writeBuffer.clone();
+		
+		this.indirectLightPass();
+
 
 	},
+	indirectLightPass : function(){
 
+		this.renderer.render(this.scene, this.viewCamera, this.writeBuffer);
+		this.frame.value ++;
+
+		this.lightWriteBuffer = this.merageBuffer(this.writeBuffer, this.lightMapBuffer, this.lightWriteBuffer);
+
+		var temp = this.lightWriteBuffer;
+		this.lightWriteBuffer = this.lightMapBuffer;
+		this.lightMapBuffer = temp;
+
+		
+		this.material.uniforms.buffer.value = this.lightMapBuffer.texture;
+
+		this.viewQuad.material.needUpdate = true;
+		this.renderer.render(this.viewScene, this.viewCamera);
+
+		// var self = this;
+		// requestAnimationFrame(function(){
+		// 	self.indirectLightPass();
+		// });
+	},
+
+	merageBuffer : function(buffer1 , buffer2, buffer3){
+
+
+
+		this.merageMaterial.uniforms.buffer1.value = buffer1.texture;
+		this.merageMaterial.uniforms.buffer2.value = buffer2.texture;
+		this.merageMaterial.uniforms.frame.value = this.merageFrame;
+
+		this.viewQuad.material  = this.merageMaterial;
+
+		this.renderer.render(this.viewScene, this.viewCamera, buffer3);
+
+		this.viewQuad.material = this.material;
+
+		return buffer3;
+
+	},
 	render : function(){
 
 	},

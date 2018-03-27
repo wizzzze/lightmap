@@ -15,7 +15,8 @@
 	</body>
 
 
-    <script src="./three.min.js"></script>
+    <script src="./three.js"></script>
+    <script src="./ShaderLib.js"></script>
     <script src="./LightMapRender.js"></script>
     <script>
     	var camera, scene, renderer;
@@ -46,11 +47,25 @@
 
 		function animate() {
 			requestAnimationFrame( animate );
+
 			render();
 		}
 
 		function render() {
 			renderer.render( scene, camera );
+		}
+
+		function bakeLightMap(){
+			var lightMap = lightMapRenderer.bakeLightMap();
+			for(var i = 0, l = scene.children.length; i < l; i++){
+				var child = scene.children[i];
+				if(child.isMesh){
+					child.material.lightMap = lightMap;
+					child.material.needUpdate = true;
+				}else if(child.isPointLight){
+					scene.remove(child);
+				}
+			}
 		}
 
     </script>

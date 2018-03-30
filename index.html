@@ -61,15 +61,10 @@
 
 		function bakeLightMap(){
 			var lightMap = lightMapRenderer.bakeLightMap();
-			for(var i = 0, l = scene.children.length; i < l; i++){
-				var child = scene.children[i];
-				if(child.isMesh){
-					child.material.lightMap = lightMap;
-					child.material.needUpdate = true;
-				}else if(child.isPointLight){
-					scene.remove(child);
-				}
-			}
+			
+			lightMapRenderer.restoreScene();
+
+			renderer.render( lightMapRenderer.scene, camera );
 		}
 
 		function exportScene(){

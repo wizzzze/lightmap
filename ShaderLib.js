@@ -7,6 +7,24 @@ varying vec2 vUv2;
 varying vec3 vPosition;
 varying vec3 vNormal;
 
+float pow2( const in float x ) { return x*x; }
+
+mat3 inverse(mat3 m) {
+  float a00 = m[0][0], a01 = m[0][1], a02 = m[0][2];
+  float a10 = m[1][0], a11 = m[1][1], a12 = m[1][2];
+  float a20 = m[2][0], a21 = m[2][1], a22 = m[2][2];
+
+  float b01 = a22 * a11 - a12 * a21;
+  float b11 = -a22 * a10 + a12 * a20;
+  float b21 = a21 * a10 - a11 * a20;
+
+  float det = a00 * b01 + a01 * b11 + a02 * b21;
+
+  return mat3(b01, (-a22 * a01 + a02 * a21), (a12 * a01 - a02 * a11),
+              b11, (a22 * a00 - a02 * a20), (-a12 * a00 + a02 * a10),
+              b21, (-a21 * a00 + a01 * a20), (a11 * a00 - a01 * a10)) / det;
+}
+
 mat4 inverse(mat4 m) {
   float
       a00 = m[0][0], a01 = m[0][1], a02 = m[0][2], a03 = m[0][3],
@@ -48,6 +66,12 @@ mat4 inverse(mat4 m) {
       a20 * b03 - a21 * b01 + a22 * b00) / det;
 }
 
+mat3 transpose(mat3 m) {
+  return mat3(m[0][0], m[1][0], m[2][0],
+              m[0][1], m[1][1], m[2][1],
+              m[0][2], m[1][2], m[2][2]);
+}
+
 mat4 transpose(mat4 m) {
   return mat4(m[0][0], m[1][0], m[2][0], m[3][0],
               m[0][1], m[1][1], m[2][1], m[3][1],
@@ -55,14 +79,22 @@ mat4 transpose(mat4 m) {
               m[0][3], m[1][3], m[2][3], m[3][3]);
 }
 
+mat3 getNormalMatrix(mat4 m){
+	return mat3(
+		m[0][0], m[1][0], m[2][0],
+		m[0][1], m[1][1], m[2][1],
+		m[0][2], m[1][2], m[2][2]
+	);
+}
 
 void main(){
 	vUv2 = uv2;
 	vPosition = (modelMatrix * vec4(position, 1.)).xyz;
-	vNormal = (transpose(inverse(modelMatrix)) * vec4(normal, 0.)).xyz;
+	// vNormal = transpose(inverse(getNormalMatrix(modelMatrix))) * normal;
+	vNormal =  normalMatrix * normal;
 	vec2 pos = uv2 * 2. - 1.;
 	gl_Position = vec4(pos, 0., 1.);
-}
+}	
 `,
 
 lightMapFragmentShader1 : `
@@ -115,7 +147,7 @@ bool TriangleIntersect(vec3 ro, vec3 rd, Triangle tri, out float rt ){
 
 float castRay(vec3 ro, vec3 rd){
 	float rt = DIST_MAX;
-    for( int i = 0; i < 10; i++ )
+    for( int i = 0; i < 20; i++ )
     {
     	float rti;
         if( TriangleIntersect( ro, rd, tris[i], rti ) && rti < rt && rti > 0. )
@@ -158,13 +190,15 @@ void main(){
     {
     	float rt = castRay(vPosition, lightDirection);
     	float dis = distance(light.position, vPosition);
-    	if(rt > dis)
+    	if(rt >  dis)
     	{
     		//it's not been blocked
     		
     		float weight = punctualLightIntensityToIrradianceFactor(dis , light.distance, 1.);
     		
     		color = light.color * weight;
+    		// color = light.color;
+    		// color = vec3(1.,1.,0.);
     	}
     }
 
@@ -244,7 +278,7 @@ bool TriangleIntersect(vec3 ro, vec3 rd, Triangle tri, out float rt ){
 
 float castRay(vec3 ro, vec3 rd, out vec2 uv2, out vec3 normal){
 	float rt = DIST_MAX;
-    for( int i = 0; i < 10; i++ )
+    for( int i = 0; i < 20; i++ )
     {
     	float rti;
         if( TriangleIntersect( ro, rd, tris[i], rti ) && rti < rt && rti > 0. )

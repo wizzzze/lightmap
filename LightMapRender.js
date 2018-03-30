@@ -94,7 +94,7 @@ LightMapRenderer.prototype = {
 				this.light = child;
 			}
 		}
-
+		console.log(uniforms);
 		return uniforms;
 	},
 	genMeshUniforms : function(mesh){
@@ -248,7 +248,7 @@ LightMapRenderer.prototype = {
 
 		this.lightWriteBuffer = this.writeBuffer.clone();
 		
-		// this.indirectLightPass();
+		this.indirectLightPass();
 
 
 	},
@@ -269,7 +269,7 @@ LightMapRenderer.prototype = {
 
 		this.renderer.render(this.viewScene, this.viewCamera);
 
-		if(this.frame.value >= 100){
+		if(this.frame.value >= 200){
 			var scene = this.originalScene;
 			this.lightMapBuffer.texture.flipY = false;
 			for(var i = 0, l = scene.children.length; i < l; i++){
@@ -320,7 +320,9 @@ LightMapRenderer.prototype = {
 			
 		}, {} );
 	},
+	restoreScene : function(){
 
+	},
 
 	DirectLightMapRender : function(light){
 		

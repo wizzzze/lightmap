@@ -1,6 +1,7 @@
-var LightMapRenderer = function(scene, renderer){
+var LightMapRenderer = function(scene,callback){
 	this.scene = scene.clone();
 	this.originalScene = scene;
+	this.callback = callback;
 	this.renderer = new THREE.WebGLRenderer();
 
 	this.renderer.setSize(512 ,512);
@@ -14,7 +15,7 @@ var LightMapRenderer = function(scene, renderer){
 	this.viewCamera.position.set( 0, 0, 1 );
 
 	var quad = new THREE.PlaneBufferGeometry( 2 , 2 );
-	this.material = new THREE.ShaderMaterial({
+	var viewMaterial = new THREE.ShaderMaterial({
 		uniforms : {
 			buffer : { value : null },
 		},
@@ -22,7 +23,7 @@ var LightMapRenderer = function(scene, renderer){
 		fragmentShader : ShaderLib.debugFragmentShader
 	});
 
-	this.viewQuad = new THREE.Mesh(quad, this.material);
+	this.viewQuad = new THREE.Mesh(quad, viewMaterial);
 	this.viewScene.add(this.viewQuad);
 
 	this.frame = { value : 1 };
@@ -32,18 +33,18 @@ var LightMapRenderer = function(scene, renderer){
 	var merageQuad = new THREE.PlaneBufferGeometry( 2 , 2 );
 	this.merageFrame = 1;
 
-	this.merageMaterial = new THREE.ShaderMaterial({
+	var merageMaterial = new THREE.ShaderMaterial({
 		uniforms : {
 			buffer1 : { value : null },
 			buffer2 : { value : null },
-			res : { value : new THREE.Vector2(512, 512)},
+			res : { value : new THREE.Vector2(1024, 1024)},
 			frame : { value : this.merageFrame } 
 		},
 		vertexShader : ShaderLib.debugVertexShader,
-		FragmentShader : ShaderLib.merageFragmentShader
+		fragmentShader : ShaderLib.merageFragmentShader
 	});
 
-	this.merageQuad = new THREE.Mesh(merageQuad, this.merageMaterial);
+	this.merageQuad = new THREE.Mesh(merageQuad, merageMaterial);
 
 	this.merageScene.add(this.merageQuad);
 
@@ -61,15 +62,15 @@ LightMapRenderer.prototype = {
 			child = this.scene.children[i];
 			if(child.isMesh){
 				geometry = child.geometry;
-				x = c % 3;
-				y = Math.floor( c / 3 );
+				x = c % 6;
+				y = Math.floor( c / 6 );
 				uv = geometry.attributes.uv.array;
 				uv2 = [];
 				for(var n = 0 , m = uv.length; n < m; n++){
 					u = uv[n];
 					v = uv[++n];
-					u2 = ((u * ( defaultWidth - 4 )) + ( x * defaultWidth ) + 2 )/512;
-					v2 = ((v * ( defaultHeight - 4 )) + ( y * defaultHeight ) + 2 )/512;
+					u2 = ((u * ( defaultWidth - 4 )) + ( x * defaultWidth ) + 2 )/1024;
+					v2 = ((v * ( defaultHeight - 4 )) + ( y * defaultHeight ) + 2 )/1024;
 					uv2.push(u2, v2);
 				}
 
@@ -122,7 +123,7 @@ LightMapRenderer.prototype = {
 
 
 			// nor = (new THREE.Vector3(normals.array[i1*3], normals.array[i1*3+1], normals.array[i1*3+2];)).applyMatrix4 ( worldMatrix );
-			nor = this.localToWorld( [normals.array[i1*3], normals.array[i1*3+1], normals.array[i1*3+2]], worldMatrix );
+			nor = this.normalToWorld( [normals.array[i1*3], normals.array[i1*3+1], normals.array[i1*3+2]], mesh.matrix.clone() );
 			uv21 = [uv2.array[i1*2], uv2.array[i1*2+1]];
 			uv22 = [uv2.array[i2*2], uv2.array[i2*2+1]];
 			uv23 = [uv2.array[i3*2], uv2.array[i3*2+1]];
@@ -141,6 +142,11 @@ LightMapRenderer.prototype = {
 
 		return worldPos;
 
+	},
+	normalToWorld : function(normal, matrix){
+		var tmp =  new THREE.Matrix4();
+		tmp = tmp.getInverse(matrix).transpose();
+		return this.localToWorld(normal, tmp.elements);
 	},
 	createTri : function(pos1, pos2, pos3, nor, uv21, uv22, uv23){
 
@@ -188,7 +194,7 @@ LightMapRenderer.prototype = {
 			}
 		}
 
-		this.directLightMapBuffer = new THREE.WebGLRenderTarget( 512, 512, {
+		this.directLightMapBuffer = new THREE.WebGLRenderTarget( 1024, 1024, {
 			wrapS: THREE.RepeatWrapping,
 			wrapT: THREE.RepeatWrapping,
 			minFilter: THREE.NearestFilter,
@@ -201,16 +207,16 @@ LightMapRenderer.prototype = {
 
 		this.renderer.render(this.scene, this.viewCamera, this.directLightMapBuffer);
 
-		this.material.uniforms.buffer.value = this.directLightMapBuffer.texture;
+		this.viewQuad.material.uniforms.buffer.value = this.directLightMapBuffer.texture;
 		this.renderer.render(this.viewScene, this.viewCamera);
 
 		this.lightMapBuffer = this.directLightMapBuffer;
 
 		//indirectlight pass;
 
-		var indirectLightMapMaterial = new THREE.ShaderMaterial({
+		this.indirectLightMapMaterial = new THREE.ShaderMaterial({
 			uniforms : {
-				resolution :{ value : new THREE.Vector2(512, 512)},
+				resolution :{ value : new THREE.Vector2(1024, 1024)},
 				frame : this.frame,
 				lightBuffer : { value : this.lightMapBuffer.texture},
 				tris : { 
@@ -224,11 +230,11 @@ LightMapRenderer.prototype = {
 		for(var i = 0, l = this.scene.children.length; i < l; i++ ){
 			child = this.scene.children[i];
 			if(child.isMesh){
-				child.material = indirectLightMapMaterial;
+				child.material = this.indirectLightMapMaterial;
 			}
 		}
 
-		this.writeBuffer = new THREE.WebGLRenderTarget( 512, 512, {
+		this.writeBuffer = new THREE.WebGLRenderTarget( 1024, 1024, {
 			wrapS: THREE.RepeatWrapping,
 			wrapT: THREE.RepeatWrapping,
 			minFilter: THREE.NearestFilter,
@@ -242,14 +248,14 @@ LightMapRenderer.prototype = {
 
 		this.lightWriteBuffer = this.writeBuffer.clone();
 		
-		this.indirectLightPass();
+		// this.indirectLightPass();
 
 
 	},
 	indirectLightPass : function(){
 
 		this.renderer.render(this.scene, this.viewCamera, this.writeBuffer);
-		this.frame.value ++;
+		this.indirectLightMapMaterial.uniforms.frame.value += 1;
 
 		this.lightWriteBuffer = this.merageBuffer(this.writeBuffer, this.lightMapBuffer, this.lightWriteBuffer);
 
@@ -257,37 +263,62 @@ LightMapRenderer.prototype = {
 		this.lightWriteBuffer = this.lightMapBuffer;
 		this.lightMapBuffer = temp;
 
-		
-		this.material.uniforms.buffer.value = this.lightMapBuffer.texture;
+		this.viewQuad.material.uniforms.buffer.value = this.lightMapBuffer.texture;
 
-		this.viewQuad.material.needUpdate = true;
+		this.indirectLightMapMaterial.uniforms.lightBuffer.value = this.lightMapBuffer.texture;
+
 		this.renderer.render(this.viewScene, this.viewCamera);
 
-		// var self = this;
-		// requestAnimationFrame(function(){
-		// 	self.indirectLightPass();
-		// });
+		if(this.frame.value >= 100){
+			var scene = this.originalScene;
+			this.lightMapBuffer.texture.flipY = false;
+			for(var i = 0, l = scene.children.length; i < l; i++){
+				var child = scene.children[i];
+
+				if(child.isMesh){
+					child.material.lightMap = this.lightMapBuffer.texture;
+					child.material.needUpdate = true;
+				}else if(child.isPointLight){
+					scene.remove(child);
+					break;
+				}
+			}
+			this.callback();
+			return;
+		}
+		var self = this;
+		requestAnimationFrame(function(){
+			self.indirectLightPass();
+		});
 	},
 
 	merageBuffer : function(buffer1 , buffer2, buffer3){
 
+		this.merageQuad.material.uniforms.buffer1.value = buffer1.texture;
+		this.merageQuad.material.uniforms.buffer2.value = buffer2.texture;
+		this.merageQuad.material.uniforms.frame.value = this.merageFrame;
 
+		this.renderer.render(this.merageScene, this.viewCamera, buffer3);
+		this.merageFrame++;
 
-		this.merageMaterial.uniforms.buffer1.value = buffer1.texture;
-		this.merageMaterial.uniforms.buffer2.value = buffer2.texture;
-		this.merageMaterial.uniforms.frame.value = this.merageFrame;
-
-		this.viewQuad.material  = this.merageMaterial;
-
-		this.renderer.render(this.viewScene, this.viewCamera, buffer3);
-
-		this.viewQuad.material = this.material;
 
 		return buffer3;
 
 	},
-	render : function(){
+	exportScene : function(){
+		var gltfExporter = new THREE.GLTFExporter();
 
+		var link = document.createElement( 'a' );
+		link.download = 'scene.gltf';
+
+		gltfExporter.parse( this.scene, function( result ) {
+			var output = JSON.stringify( result, null, 2 );
+			var blob = new Blob( [ output ], { type: 'text/plain' } );
+			link.href = URL.createObjectURL( blob );
+			
+			link.click();
+			
+		}, {} );
 	},
 
 

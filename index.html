@@ -18,6 +18,8 @@
     <script src="./three.js"></script>
     <script src="./ShaderLib.js"></script>
     <script src="./LightMapRender.js"></script>
+    <script src="./GLTFExporter.js"></script>
+	<script src="./OBJExporter.js"></script>
     <script>
     	var camera, scene, renderer;
 
@@ -40,7 +42,9 @@
 		 	scene = obj;
 			var ambient = new THREE.AmbientLight( 0x444444 );
 			scene.add( ambient );
-			lightMapRenderer = new LightMapRenderer(scene, renderer);
+			lightMapRenderer = new LightMapRenderer(scene, function(){
+				render();
+			});
 			render();
 		} );
 
@@ -66,6 +70,22 @@
 					scene.remove(child);
 				}
 			}
+		}
+
+		function exportScene(){
+			var gltfExporter = new THREE.GLTFExporter();
+
+			var link = document.createElement( 'a' );
+			link.download = 'scene.gltf';
+
+			gltfExporter.parse( scene, function( result ) {
+				var output = JSON.stringify( result, null, 2 );
+				var blob = new Blob( [ output ], { type: 'text/plain' } );
+				link.href = URL.createObjectURL( blob );
+				
+				link.click();
+				
+			}, {} );
 		}
 
     </script>

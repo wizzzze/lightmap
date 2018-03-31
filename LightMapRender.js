@@ -248,7 +248,7 @@ LightMapRenderer.prototype = {
 
 		this.lightWriteBuffer = this.writeBuffer.clone();
 		
-		this.indirectLightPass();
+		// this.indirectLightPass();
 
 
 	},

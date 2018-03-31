@@ -197,8 +197,6 @@ void main(){
     		float weight = punctualLightIntensityToIrradianceFactor(dis , light.distance, 1.);
     		
     		color = light.color * weight;
-    		// color = light.color;
-    		// color = vec3(1.,1.,0.);
     	}
     }
 

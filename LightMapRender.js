@@ -1,8 +1,10 @@
 var LightMapRenderer = function(scene,callback){
-	this.scene = scene.clone();
-	this.originalScene = scene;
+	this.scene = scene;
+	// this.originalScene = scene;
 	this.callback = callback;
 	this.renderer = new THREE.WebGLRenderer();
+
+	this.materialsCache = {};
 
 	this.renderer.setSize(512 ,512);
 	this.renderer.domElement.style.position = "absolute";
@@ -11,6 +13,7 @@ var LightMapRenderer = function(scene,callback){
 	document.body.appendChild(this.renderer.domElement);
 
 	this.viewScene = new THREE.Scene();
+	this.viewScene.background = new THREE.Color(0,0,0);
 	this.viewCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
 	this.viewCamera.position.set( 0, 0, 1 );
 
@@ -75,7 +78,7 @@ LightMapRenderer.prototype = {
 				}
 
 				geometry.addAttribute('uv2', new THREE.Float32BufferAttribute(uv2, 2));
-				this.originalScene.children[i].geometry.addAttribute('uv2', new THREE.Float32BufferAttribute(uv2, 2));
+				geometry.attributes.uv2.needsUpdate = true;
 				c += 1;
 			}	
 		}
@@ -166,6 +169,7 @@ LightMapRenderer.prototype = {
 	},
 
 	bakeLightMap : function(){
+		this.beginTime = Date.now();
 
 		this.genUV2();
 		this.uniforms = this.genTriangleUniform();
@@ -190,6 +194,8 @@ LightMapRenderer.prototype = {
 		for(var i = 0, l = this.scene.children.length; i < l; i++ ){
 			child = this.scene.children[i];
 			if(child.isMesh){
+				// materialsCache
+				this.materialsCache[child.uuid] = child.material;
 				child.material = directLightMapMaterial;
 			}
 		}
@@ -218,7 +224,7 @@ LightMapRenderer.prototype = {
 			uniforms : {
 				resolution :{ value : new THREE.Vector2(1024, 1024)},
 				frame : this.frame,
-				lightBuffer : { value : this.lightMapBuffer.texture},
+				lightBuffer : { value : this.directLightMapBuffer.texture},
 				tris : { 
 					value : this.uniforms
 				},
@@ -248,7 +254,7 @@ LightMapRenderer.prototype = {
 
 		this.lightWriteBuffer = this.writeBuffer.clone();
 		
-		// this.indirectLightPass();
+		this.indirectLightPass();
 
 
 	},
@@ -269,21 +275,16 @@ LightMapRenderer.prototype = {
 
 		this.renderer.render(this.viewScene, this.viewCamera);
 
-		if(this.frame.value >= 200){
-			var scene = this.originalScene;
-			this.lightMapBuffer.texture.flipY = false;
-			for(var i = 0, l = scene.children.length; i < l; i++){
-				var child = scene.children[i];
-
-				if(child.isMesh){
-					child.material.lightMap = this.lightMapBuffer.texture;
-					child.material.needUpdate = true;
-				}else if(child.isPointLight){
-					scene.remove(child);
-					break;
-				}
-			}
+		if(this.frame.value >= 100){
+			// this.lightMapBuffer.texture.flipY = false;
+			
+			this.lightMapBuffer.needsUpdate = true;
+			this.restoreScene(this.lightMapBuffer.texture);
 			this.callback();
+			console.log('end');
+
+			this.endTime = Date.now();
+			console.log(this.endTime - this.beginTime);
 			return;
 		}
 		var self = this;
@@ -320,7 +321,23 @@ LightMapRenderer.prototype = {
 			
 		}, {} );
 	},
-	restoreScene : function(){
+	restoreScene : function(lightMap){
+		var scene = this.scene;
+		var child;
+		for(var i = 0 , l = scene.children.length; i < l ; i++){
+			child = scene.children[i];
+			console.log(child);
+			if(child instanceof THREE.Object3D){
+				if(child.isMesh){
+					child.material = this.materialsCache[child.uuid];
+					if(lightMap !== undefined)
+					child.material.lightMap = lightMap;
+					child.material.needUpdate = true;
+				}else if(child.isPointLight){
+					scene.remove(child);
+				}
+			}
+		}
 
 	},
 

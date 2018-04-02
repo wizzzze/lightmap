@@ -1,6 +1,5 @@
 var LightMapRenderer = function(scene,callback){
 	this.scene = scene;
-	// this.originalScene = scene;
 	this.callback = callback;
 	this.renderer = new THREE.WebGLRenderer();
 
@@ -9,6 +8,7 @@ var LightMapRenderer = function(scene,callback){
 	this.renderer.setSize(512 ,512);
 	this.renderer.domElement.style.position = "absolute";
 	this.renderer.domElement.style.bottom = "0";
+	this.renderer.domElement.style.left = "0";
 	this.renderer.setClearColor(new THREE.Color(0,0,0), 1);
 	document.body.appendChild(this.renderer.domElement);
 
@@ -172,6 +172,8 @@ LightMapRenderer.prototype = {
 		this.beginTime = Date.now();
 
 		this.genUV2();
+
+		this.diffuseMapOutput();
 		this.uniforms = this.genTriangleUniform();
 		var directLightMapMaterial = new THREE.ShaderMaterial({
 			uniforms : {
@@ -194,11 +196,12 @@ LightMapRenderer.prototype = {
 		for(var i = 0, l = this.scene.children.length; i < l; i++ ){
 			child = this.scene.children[i];
 			if(child.isMesh){
-				// materialsCache
-				this.materialsCache[child.uuid] = child.material;
 				child.material = directLightMapMaterial;
 			}
 		}
+
+
+		this.cacheMaterials();
 
 		this.directLightMapBuffer = new THREE.WebGLRenderTarget( 1024, 1024, {
 			wrapS: THREE.RepeatWrapping,
@@ -224,7 +227,8 @@ LightMapRenderer.prototype = {
 			uniforms : {
 				resolution :{ value : new THREE.Vector2(1024, 1024)},
 				frame : this.frame,
-				lightBuffer : { value : this.directLightMapBuffer.texture},
+				lightBuffer : { value : this.directLightMapBuffer.texture },
+				diffuseBuffer : { value : this.diffuseWriteBuffer.texture },
 				tris : { 
 					value : this.uniforms
 				},
@@ -275,10 +279,28 @@ LightMapRenderer.prototype = {
 
 		this.renderer.render(this.viewScene, this.viewCamera);
 
-		if(this.frame.value >= 100){
+		if(this.frame.value >= 10){
 			// this.lightMapBuffer.texture.flipY = false;
 			
 			this.lightMapBuffer.needsUpdate = true;
+
+			// this.denoise();
+
+			// denoise
+			this.viewQuad.material = new THREE.ShaderMaterial({
+				uniforms : {
+					buffer : { value : this.lightMapBuffer.texture },
+					resolution : {value : new THREE.Vector2(1024, 1024)},
+				},
+				vertexShader : ShaderLib.debugVertexShader,
+				fragmentShader : ShaderLib.denoiseFragmentShader,
+			})
+
+			this.renderer.setSize(1024, 1024);
+			this.renderer.render(this.viewScene, this.viewCamera);
+			this.renderer.render(this.viewScene, this.viewCamera);
+			this.renderer.render(this.viewScene, this.viewCamera);
+			this.renderer.render(this.viewScene, this.viewCamera);
 			this.restoreScene(this.lightMapBuffer.texture);
 			this.callback();
 			console.log('end');
@@ -321,12 +343,21 @@ LightMapRenderer.prototype = {
 			
 		}, {} );
 	},
+	cacheMaterials : function(){
+		var child;
+		for(var i = 0, l = this.scene.children.length; i < l; i++ ){
+			child = this.scene.children[i];
+			if(child.isMesh){
+				// materialsCache
+				this.materialsCache[child.uuid] = child.material;
+			}
+		}
+	},
 	restoreScene : function(lightMap){
 		var scene = this.scene;
 		var child;
 		for(var i = 0 , l = scene.children.length; i < l ; i++){
 			child = scene.children[i];
-			console.log(child);
 			if(child instanceof THREE.Object3D){
 				if(child.isMesh){
 					child.material = this.materialsCache[child.uuid];
@@ -340,8 +371,63 @@ LightMapRenderer.prototype = {
 		}
 
 	},
+	diffuseMapOutput : function(){
+		var scene = this.scene;
+		var child;
 
-	DirectLightMapRender : function(light){
+		function genDiffuseShader(material){
+			var fragmentShader = [];
+			var uniforms = {};
+			if(material.map){
+				fragmentShader.push('#define USE_MAP');
+				uniforms.diffuseMap = { value : material.map } ;
+			}else if(material.color){
+				fragmentShader.push('#define USE_COLOR');
+				uniforms.uColor = { value : material.color } ;
+			}
+
+			fragmentShader.push(ShaderLib.diffuseOutputShader);
+
+			fragmentShader = fragmentShader.join("\n");
+
+			// console.log(fragmentShader);return;
+			var material = new THREE.ShaderMaterial({
+				uniforms : uniforms,
+				vertexShader : ShaderLib.vertexShader,
+				fragmentShader : fragmentShader
+			});
+			console.log(material);
+
+			return material;
+		}
+
+		for(var i = 0 , l = scene.children.length; i < l ; i++){
+			child = scene.children[i];
+			if(child instanceof THREE.Object3D){
+				if(child.isMesh){
+					child.material = genDiffuseShader(child.material);
+				}
+			}
+		}
+
+		this.diffuseWriteBuffer = new THREE.WebGLRenderTarget( 512, 512, {
+			wrapS: THREE.RepeatWrapping,
+			wrapT: THREE.RepeatWrapping,
+			minFilter: THREE.NearestFilter,
+			magFilter: THREE.NearestFilter,
+			format: THREE.RGBAFormat,
+			type: THREE.FloatType,
+			stencilBuffer: false,  
+			depthBuffer: false
+		});
+		this.renderer.render(this.scene, this.viewCamera, this.diffuseWriteBuffer);
+
+		// this.viewQuad.material.uniforms.buffer.value = this.diffuseWriteBuffer.texture;
+
+		// this.renderer.render(this.viewScene, this.viewCamera);
+		
+	},
+	denoise : function(buffer){
 		
 	}
 

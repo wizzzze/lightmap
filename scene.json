@@ -466,7 +466,7 @@
 				"type": "PointLight",
 				"name": "PointLight",
 				"castShadow": true,
-				"matrix": [1,0,0,0,0,1,0,0,0,0,1,0,1.2,1.8,1.5,1],
+				"matrix": [1,0,0,0,0,1,0,0,0,0,1,0,0,1,1.5,1],
 				"color": 16777215,
 				"intensity": 1,
 				"distance": 0,

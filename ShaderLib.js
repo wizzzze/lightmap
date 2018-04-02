@@ -72,7 +72,7 @@ float castRay(vec3 ro, vec3 rd){
     for( int i = 0; i < 20; i++ )
     {
     	float rti;
-        if( TriangleIntersect( ro, rd, tris[i], rti ) && rti < rt && rti > 0. )
+        if( TriangleIntersect( ro, rd, tris[i], rti ) && rti < rt && rti > 0.01 )
         {   
         	//rti must greater then 0, 
             rt = rti;
@@ -116,7 +116,7 @@ void main(){
     	{
     		//it's not been blocked
     		
-    		float weight = punctualLightIntensityToIrradianceFactor(dis , light.distance, 1.);
+    		float weight = punctualLightIntensityToIrradianceFactor(dis / 1.5, light.distance, 2.);
     		
     		color = light.color * weight;
     		// color = light.color;
@@ -147,6 +147,7 @@ uniform vec2 resolution;
 uniform Triangle tris[20];
 // uniform sampler2D buffer;
 uniform sampler2D lightBuffer;
+uniform sampler2D diffuseBuffer;
 
 
 float seed, seed2;
@@ -203,7 +204,7 @@ float castRay(vec3 ro, vec3 rd, out vec2 uv2, out vec3 normal){
     for( int i = 0; i < 20; i++ )
     {
     	float rti;
-        if( TriangleIntersect( ro, rd, tris[i], rti ) && rti < rt && rti > 0. )
+        if( TriangleIntersect( ro, rd, tris[i], rti ) && rti < rt && rti > 0.01 )
         {   
         	//rti must greater then 0, 
         	vec3 hitPos = ro + rd * rti;
@@ -266,7 +267,7 @@ void main(){
 		// vec4 nc;
 		// vec4 oc = texture2D(buffer , vUv2);
 		// if(dt < oc.w * DIST_MAX){
-			color = texture2D(lightBuffer, uv2) * .01 ;
+			color = texture2D(lightBuffer, uv2) * texture2D(diffuseBuffer , uv2 ) * .025 ;
 			
 		// }else{
 		// 	color = oc;
@@ -287,14 +288,31 @@ void main(){
 }
 `,
 diffuseOutputShader : `
-varying vec2 vUv2;
-varying vec2 vUv;
 
-#include <color_pars_fragment>
-#include <map_pars_fragment>
+#ifdef USE_COLOR
+
+uniform vec3 uColor;
+
+#endif
+
+#ifdef USE_MAP
+
+varying uv2 vUv;
+uniform sampler2D diffuseMap;
+
+#endif
 
 void main(){
 
+	#ifdef USE_COLOR
+
+		gl_FragColor = vec4(uColor, 1.);
+
+	#endif
+
+	#ifdef USE_MAP
+		gl_FragColor = texture2D(diffuseMap, vUv);
+	#endif
 }
 
 `,
@@ -315,7 +333,47 @@ void main(){
 }
 
 `,
+denoiseFragmentShader : `
+uniform sampler2D buffer;
+uniform vec2 resolution;
 
+varying vec2 vUv;
+
+// vec4 calculateWeight(in vec4 color){
+// 	if()
+// }
+
+void main(){
+
+	float coordX = resolution.x * vUv.x;
+	float coordY = resolution.y * vUv.y;
+
+
+
+	vec4 color = texture2D(buffer, vUv);
+
+	vec4 color1 = texture2D(buffer, vec2((coordX - 1.)/resolution.x , (coordY + 1.)/resolution.y));
+	vec4 color2 = texture2D(buffer, vec2(vUv.x , (coordY + 1.)/resolution.y));
+	vec4 color3 = texture2D(buffer, vec2((coordX + 1.)/resolution.x , (coordY + 1.)/resolution.y));
+
+	vec4 color4 = texture2D(buffer, vec2((coordX - 1.)/resolution.x , vUv.y));
+	//color5 is color
+	vec4 color6 = texture2D(buffer, vec2((coordX + 1.)/resolution.x , vUv.y));
+
+	vec4 color7 = texture2D(buffer, vec2((coordX - 1.)/resolution.x , (coordY - 1.)/resolution.y));
+	vec4 color8 = texture2D(buffer, vec2(vUv.x , (coordY - 1.)/resolution.y));
+	vec4 color9 = texture2D(buffer, vec2((coordX + 1.)/resolution.x , (coordY - 1.)/resolution.y));
+
+
+	// color = color1 + color2 * 2. + color3 + color4 *2. + color * 4. + color6 * 2. + color7 + color8 * 2. + color9;
+
+	color = color1 + color2 * 2. + color3 + color4 *2. + color * 2. + color6 * 2. + color7 + color8 * 2. + color9;
+	color /= 14.;
+
+	gl_FragColor = vec4(color.xyz, 1.);
+
+}
+`,
 debugVertexShader : `
 varying vec2 vUv;
 

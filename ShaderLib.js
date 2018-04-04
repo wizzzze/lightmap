@@ -316,6 +316,93 @@ void main(){
 }
 
 `,
+PBROutputShader : `
+
+varying uv2 vUv;
+
+#ifdef USE_METALNESS
+
+uniform float uMetalness;
+
+#endif
+
+#ifdef USE_METALNESS_MAP
+
+uniform sampler2D metalnessMap;
+
+#endif
+
+#ifdef USE_ROUGHNESS
+
+uniform float uRoughness;
+
+#endif
+
+#ifdef USE_ROUGHNESS_MAP
+
+uniform sampler2D roughnessMap;
+
+#endif
+
+
+#ifdef USE_OPACITY
+
+uniform float uOpacity;
+
+#endif
+
+#ifdef USE_ALPHA_MAP
+
+uniform sampler2D alphaMap;
+
+#endif
+
+void main(){
+
+	float metalness = 0.5;
+	float roughness = 0.5;
+	float opacity = 1.;
+
+	#ifdef USE_METALNESS
+
+		metalness = uMetalness;
+
+	#endif
+
+	#ifdef USE_METALNESS_MAP
+
+		metalness *= texture2D(metalnessMap, vUv);
+
+	#endif
+
+	#ifdef USE_ROUGHNESS
+
+		roughness = uRoughness;
+
+	#endif
+
+	#ifdef USE_ROUGHNESS_MAP
+
+		roughness *= texture2D(roughnessMap, vUv);
+
+	#endif
+
+	#ifdef USE_OPACITY
+
+		opacity = uOpacity;
+
+	#endif
+
+	#ifdef USE_ALPHA_MAP
+
+		opacity = texture2D(alphaMap, vUv);
+
+	#endif
+
+	gl_FragColor = vec4(metalness, roughness, opacity , 1.);
+}
+
+`,
 merageFragmentShader : `
 
 uniform sampler2D buffer1;
@@ -338,10 +425,6 @@ uniform sampler2D buffer;
 uniform vec2 resolution;
 
 varying vec2 vUv;
-
-// vec4 calculateWeight(in vec4 color){
-// 	if()
-// }
 
 void main(){
 

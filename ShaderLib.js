@@ -19,7 +19,7 @@ void main(){
 }	
 `,
 
-lightMapFragmentShader1 : `
+pointLightDirectLightingFragmentShader : `
 
 precision highp float;
 precision highp int;
@@ -40,6 +40,7 @@ struct Triangle{ vec3 pos1; vec3 pos2; vec3 pos3; vec3 nor; vec2 uv21; vec2 uv22
 
 uniform Triangle tris[20];
 uniform PointLight light;
+uniform sampler2D buffer;
 
 
 bool TriangleIntersect(vec3 ro, vec3 rd, Triangle tri, out float rt ){
@@ -103,31 +104,32 @@ float punctualLightIntensityToIrradianceFactor( const in float lightDistance, co
 }
 
 void main(){
-
 	vec3 lightDirection = light.position - vPosition;
-    float ldp = dot( lightDirection, vNormal);
+	float ldp = dot( lightDirection, vNormal);
+	vec3 color = vec3(0.);
 
-    vec3 color = vec3(0.);
-    if(ldp > 0.)
-    {
-    	float rt = castRay(vPosition, lightDirection);
-    	float dis = distance(light.position, vPosition);
-    	if(rt > 1.)
-    	{
-    		//it's not been blocked
-    		
-    		float weight = punctualLightIntensityToIrradianceFactor(dis / 1.5, light.distance, 2.);
-    		
-    		color = light.color * weight;
-    		// color = light.color;
-    	}
-    }
+	if(ldp > 0.)
+	{
+	    vec4 occ = texture2D( buffer, vUv2);
+	    if(occ.w < 0.1 || (occ.w > 0. && (occ.x + occ.y + occ.z) > 0. ))
+	    {
+		
+	    	float rt = castRay(vPosition, lightDirection);
+	    	float dis = distance(light.position, vPosition);
+	    	if(rt > 1.)
+	    	{
+	    		float weight = punctualLightIntensityToIrradianceFactor(dis / 1.5, light.distance, 2.);
+	    		color = light.color * weight;		
+	    	}else{
+	    		color = vec3(0.);
+	    	}
+	    }
+	}
 
     gl_FragColor = vec4(color, 1.);
-    // gl_FragColor = vec4( (vPosition + 2.)/4., 1. );
 }
 `,
-lightMapFragmentShader2 : `
+indirectLightingFragmentShader : `
 
 precision highp float;
 precision highp int;
@@ -145,8 +147,8 @@ varying	vec3 vNormal;
 uniform int frame;
 uniform vec2 resolution;
 uniform Triangle tris[20];
-// uniform sampler2D buffer;
 uniform sampler2D lightBuffer;
+uniform sampler2D indirectLightingBuffer;
 uniform sampler2D diffuseBuffer;
 
 
@@ -263,18 +265,18 @@ void main(){
 
 	float dt = castRay(vPosition, direction, uv2, n);
 
-	if(dt < DIST_MAX && dot( n, direction ) < 0.){
-		// vec4 nc;
-		// vec4 oc = texture2D(buffer , vUv2);
-		// if(dt < oc.w * DIST_MAX){
-			color = texture2D(lightBuffer, uv2) * texture2D(diffuseBuffer , uv2 ) * .025 ;
-			
-		// }else{
-		// 	color = oc;
-		// }
+	vec4 oc = texture2D(indirectLightingBuffer , vUv2);
+
+	if(dot( n, direction ) < 0.){
+		
+		color = vec4((texture2D(lightBuffer, uv2) * texture2D(diffuseBuffer , uv2 ) / (30. + pow2(dt)) ).xyz, dt / DIST_MAX);
+		
+	}else{
+		color = oc;
 	}
 
-	gl_FragColor = vec4(color.xyz, 1.);
+	gl_FragColor = color;
+	// gl_FragColor = texture2D(diffuseBuffer, vUv2);
 }
 
 `,

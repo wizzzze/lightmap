@@ -10,7 +10,7 @@ UV2.maxUnitSize = 512;
 
 UV2.prototype = {
 	addUV2 : function(mesh, size){
-		console.log(mesh);
+		
 		if(size === undefined){
 			var geometry = mesh.geometry;
 			if(!geometry.boundingBox){
@@ -100,8 +100,6 @@ UV2.prototype = {
 			}
 		}else if(unit.reference !== null){
 			var size = unit.size;
-			// var width = this.mapWidth - this.padding * 2;
-			// var height = this.mapHeight - this.padding * 2;
 
 			var width = this.mapWidth;// - this.padding * 2;
 			var height = this.mapHeight;// - this.padding * 2;

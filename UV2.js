@@ -3,7 +3,7 @@ var UV2 = function(){
 
 	this.mapWidth = 0;
 	this.mapHeight = 0;
-	this.padding = 2; 
+	this.padding = 4; 
 }
 
 UV2.maxUnitSize = 512;
@@ -30,6 +30,11 @@ UV2.prototype = {
 		}
 
 		var unit = new Unit(size, mesh);
+
+		if(size == UV2.maxUnitSize){
+			this.units.push(unit);
+			return true;
+		}
 
 		var units = this.units;
 		var i, l, u;
@@ -66,8 +71,8 @@ UV2.prototype = {
 		// return 128 * Math.ceil(volume);
 		if(volume < 0.1)return 32;
 		else if(volume < 0.3)return 64;
-		else if(volume < 1)return 128;
-		else if(volume < 2.5)return 256;
+		else if(volume < 0.5)return 128;
+		else if(volume < 1.5)return 256;
 		else return 512;
 	},
 	arrange : function(){

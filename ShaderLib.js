@@ -42,16 +42,22 @@ uniform Triangle tris[20];
 uniform PointLight light;
 uniform sampler2D buffer;
 
+#ifdef USE_NORMAL_MAP
+	
+	varying vec2 vUv;
+	uniform sampler2D normalMap;
+	
+#endif
 
 bool TriangleIntersect(vec3 ro, vec3 rd, Triangle tri, out float rt ){
+	rt = DIST_MAX;
+
 	vec3 edge1 = tri.pos2 - tri.pos1;
 	vec3 edge2 = tri.pos3 - tri.pos1;
 	vec3 tvec = ro - tri.pos1;
 	vec3 pvec = cross(rd, edge2);
 	float det = 1.0 / dot(edge1, pvec);
 	float u = dot(tvec, pvec) * det;
-
-	rt = DIST_MAX;
 
 	if (u < 0.0 || u > 1.0)
 		return false;
@@ -105,28 +111,37 @@ float punctualLightIntensityToIrradianceFactor( const in float lightDistance, co
 
 void main(){
 	vec3 lightDirection = light.position - vPosition;
-	float ldp = dot( lightDirection, vNormal);
-	vec3 color = vec3(0.);
 
+	vec3 nor = vNormal;
+
+	#ifdef USE_NORMAL_MAP
+		nor = texture2D(normalMap, vUv);
+		nor = normalMatrix * nor;
+
+	#endif
+	float ldp = dot( lightDirection, nor);
+	vec3 color = vec3(0.);
+	float rt = DIST_MAX;
 	if(ldp > 0.)
 	{
 	    vec4 occ = texture2D( buffer, vUv2);
-	    if(occ.w < 0.1 || (occ.w > 0. && (occ.x + occ.y + occ.z) > 0. ))
+	    if(occ.w == 0. || (occ.w > 0. && (occ.x + occ.y + occ.z) > 0. ))
 	    {
 		
-	    	float rt = castRay(vPosition, lightDirection);
+	    	rt = castRay(vPosition, lightDirection);
 	    	float dis = distance(light.position, vPosition);
-	    	if(rt > 1.)
+	    	if(rt > dis)
 	    	{
-	    		float weight = punctualLightIntensityToIrradianceFactor(dis / 1.5, light.distance, 2.);
-	    		color = light.color * weight;		
+	    		// float weight = punctualLightIntensityToIrradianceFactor(dis , light.distance, 1.);
+	    		// color = light.color * weight;
+	    		color = light.color;
 	    	}else{
 	    		color = vec3(0.);
 	    	}
 	    }
 	}
-
-    gl_FragColor = vec4(color, 1.);
+	// gl_FragColor = texture2D(buffer, vUv2);
+    gl_FragColor = vec4(color, rt / DIST_MAX);
 }
 `,
 indirectLightingFragmentShader : `
@@ -177,6 +192,8 @@ vec3 cosWeightedRandomHemisphereDirection( const vec3 n ) {
 
 
 bool TriangleIntersect(vec3 ro, vec3 rd, Triangle tri, out float rt ){
+	rt = DIST_MAX;
+	
 	vec3 edge1 = tri.pos2 - tri.pos1;
 	vec3 edge2 = tri.pos3 - tri.pos1;
 	vec3 tvec = ro - tri.pos1;
@@ -184,7 +201,6 @@ bool TriangleIntersect(vec3 ro, vec3 rd, Triangle tri, out float rt ){
 	float det = 1.0 / dot(edge1, pvec);
 	float u = dot(tvec, pvec) * det;
 
-	rt = DIST_MAX;
 
 	if (u < 0.0 || u > 1.0)
 		return false;
@@ -235,19 +251,6 @@ float pow2( const in float x ) { return x*x; }
 float pow3( const in float x ) { return x*x*x; }
 float pow4( const in float x ) { float x2 = x*x; return x2*x2; }
 
-float punctualLightIntensityToIrradianceFactor( const in float lightDistance, const in float cutoffDistance, const in float decayExponent ) {
-
-	if( decayExponent > 0.0 ) {
-
-		float distanceFalloff = 1.0 / max( pow( lightDistance, decayExponent ), 0.01 );
-		float maxDistanceCutoffFactor = pow2( saturate( 1.0 - pow4( lightDistance / cutoffDistance ) ) );
-		return distanceFalloff * maxDistanceCutoffFactor;
-
-	}
-
-	return 1.0;
-
-}
 
 void main(){
 
@@ -269,14 +272,13 @@ void main(){
 
 	if(dot( n, direction ) < 0.){
 		
-		color = vec4((texture2D(lightBuffer, uv2) * texture2D(diffuseBuffer , uv2 ) / (30. + pow2(dt)) ).xyz, dt / DIST_MAX);
+		color = vec4((texture2D(lightBuffer, uv2) * texture2D(diffuseBuffer , uv2 ) / (20. + pow2(dt)) ).xyz, dt / DIST_MAX);
 		
 	}else{
 		color = oc;
 	}
 
 	gl_FragColor = color;
-	// gl_FragColor = texture2D(diffuseBuffer, vUv2);
 }
 
 `,
@@ -299,7 +301,7 @@ uniform vec3 uColor;
 
 #ifdef USE_MAP
 
-varying uv2 vUv;
+varying vec2 vUv;
 uniform sampler2D diffuseMap;
 
 #endif
@@ -416,7 +418,7 @@ void main(){
 	vec4 oc = texture2D(buffer1 , vUv);
 	vec4 nc = texture2D(buffer2 , vUv);
 
-	gl_FragColor = oc + nc;
+	gl_FragColor = vec4(( oc + nc ).xyz, 1.);
 
 	
 }

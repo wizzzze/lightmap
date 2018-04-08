@@ -1,4 +1,8 @@
 var LightMapRenderer = function(scene,callback){
+
+	this.isBaking = false;
+	this.indirectLightingMaxPass = 5;
+
 	this.scene = scene;
 	this.callback = callback;
 	this.renderer = new THREE.WebGLRenderer();
@@ -19,11 +23,16 @@ var LightMapRenderer = function(scene,callback){
 
 	this.meshs = [];
 
+	//profiler
+	this.directTimer = [];
+	this.indirectTimer;
+
+
 	this.renderer.setSize(512 ,512);
 	this.renderer.domElement.style.position = "absolute";
 	this.renderer.domElement.style.bottom = "0";
 	this.renderer.domElement.style.left = "0";
-	this.renderer.setClearColor(new THREE.Color(0,0,0), 1);
+	// this.renderer.setClearColor(new THREE.Color( 0 , 0 , 0 ), 1);
 	document.body.appendChild(this.renderer.domElement);
 
 	this.viewScene = new THREE.Scene();
@@ -67,7 +76,33 @@ var LightMapRenderer = function(scene,callback){
 
 
 LightMapRenderer.prototype = {
+	test : function(){
 
+		var scene = this.scene;
+		for(var i = 0, l = scene.children.length; i < l ; i ++){
+			var child = scene.children[i];
+			if(child.isMesh){
+				//gen uv2
+				this.uv2.addUV2(child);
+			}
+		}
+
+		this.uv2.uvWrap();
+		for(var i = 0, l= Editor.scene.scene.children[7].geometry.attributes.uv2.array.length; i < l ;i++){
+			var n = i;
+		    var u = Editor.scene.scene.children[7].geometry.attributes.uv.array[i];
+		    var v = Editor.scene.scene.children[7].geometry.attributes.uv.array[++i];
+		    var u2 = Editor.scene.scene.children[7].geometry.attributes.uv2.array[n];
+		    var v2 = Editor.scene.scene.children[7].geometry.attributes.uv2.array[++n];
+		    if(u > 0 && u < 0.5 && v > 0 && v < 0.5){
+		    	console.log(' uv in the space');
+		    }
+
+		    if(u2 > 0.5 && u2 < 0.75 && v2 > 0.5 && v2 < 0.75){
+		    	console.log(n);
+		    }
+		}
+	},
 	init : function(){
 		var scene = this.scene;
 		for(var i = 0, l = scene.children.length; i < l ; i ++){
@@ -97,6 +132,9 @@ LightMapRenderer.prototype = {
 		this.width = this.uv2.mapWidth;
 		this.height = this.uv2.mapHeight;
 
+
+		this.renderer.setSize(this.width ,this.height);
+
 		this.merageQuad.material.uniforms.res.value = new THREE.Vector2(this.width, this.height);
 
 		this.diffuseMapOutput();
@@ -105,17 +143,18 @@ LightMapRenderer.prototype = {
 
 		var data = new Float32Array( 4 );
 		data[0] = 0;data[1] = 0;data[2] = 0;data[3] = 0;
+		// data[4] = 0;data[5] = 0;data[6] = 0;data[7] = 0;
+		// data[8] = 0;data[9] = 0;data[10] = 0;data[11] = 0;
+		// data[12] = 0;data[13] = 0;data[14] = 0;data[15] = 0;
 		this.occlusionDefaultTexture = new THREE.DataTexture( data, 1, 1, THREE.RGBAFormat, THREE.FloatType );
-
-
 
 		var textureData = new Float32Array( 4 );
 		textureData[0] = 0;textureData[1] = 0;textureData[2] = 0;textureData[3] = 1;
 		this.indirectLightingDefaultTexture = new THREE.DataTexture( textureData, 1, 1, THREE.RGBAFormat, THREE.FloatType );
 
 		this.directLightingWriteBuffer = new THREE.WebGLRenderTarget( this.width, this.height, {
-			wrapS: THREE.RepeatWrapping,
-			wrapT: THREE.RepeatWrapping,
+			wrapS: THREE.ClampToEdgeWrapping,
+			wrapT: THREE.ClampToEdgeWrapping,
 			minFilter: THREE.NearestFilter,
 			magFilter: THREE.NearestFilter,
 			format: THREE.RGBAFormat,
@@ -126,8 +165,8 @@ LightMapRenderer.prototype = {
 		this.directLightingReadBuffer = this.directLightingWriteBuffer.clone();
 
 		this.lightmapWriteBuffer = new THREE.WebGLRenderTarget( this.width, this.height, {
-			wrapS: THREE.RepeatWrapping,
-			wrapT: THREE.RepeatWrapping,
+			wrapS: THREE.ClampToEdgeWrapping,
+			wrapT: THREE.ClampToEdgeWrapping,
 			minFilter: THREE.NearestFilter,
 			magFilter: THREE.NearestFilter,
 			format: THREE.RGBAFormat,
@@ -141,6 +180,7 @@ LightMapRenderer.prototype = {
 		this.indirectLightingReadBuffer = null;
 
 		this.genTriangleUniform();
+
 		this.renderFlag = LightMapRenderer.directLighting;
 
 		this.indirectLightingPass = 1;
@@ -148,8 +188,11 @@ LightMapRenderer.prototype = {
 
 
 	bakeLightMap : function(){
+		this.isBaking = true;
+		this.startTime = Date.now();
 		this.init();
 		this.render();
+
 		
 	},
 	render : function(){
@@ -170,7 +213,6 @@ LightMapRenderer.prototype = {
 					this.directLightingWriteBuffer.dispose();
 					this.directLightingWriteBuffer = null;
 
-					console.log('Indirect lighting start');
 					this.indirectLightingWriteBuffer = new THREE.WebGLRenderTarget( this.width, this.height, {
 						wrapS: THREE.RepeatWrapping,
 						wrapT: THREE.RepeatWrapping,
@@ -183,7 +225,7 @@ LightMapRenderer.prototype = {
 					});
 
 					this.indirectLightingReadBuffer = this.indirectLightingWriteBuffer.clone();
-
+					this.indirectTimer = Date.now();
 					requestAnimationFrame(function(){
 						self.render();
 					});
@@ -199,9 +241,14 @@ LightMapRenderer.prototype = {
 				this.spotLightDirectLighting();
 			}
 		}else{
-			if(this.indirectLightingPass > 10){
-				// this.debug(this.lightmapReadBuffer);
 
+			// this.isBaking = false;
+			// this.renderer.setSize(this.width, this.height);
+
+			// this.debug(this.lightmapReadBuffer);
+			// return;
+			if(this.indirectLightingPass > 5){
+				// this.debug(this.lightmapReadBuffer);
 				// denoise
 				this.viewQuad.material = new THREE.ShaderMaterial({
 					uniforms : {
@@ -213,18 +260,23 @@ LightMapRenderer.prototype = {
 				})
 
 				this.renderer.setSize(this.width, this.height);
-				this.renderer.render(this.viewScene, this.viewCamera);
-				console.log('Bake complete');
+				this.renderer.render(this.viewScene, this.viewCamera, this.lightmapWriteBuffer);
+				this.swapLightMapBuffer();
+				this.endTime = Date.now();
+				this.restoreScene();
+				this.debug(this.lightmapReadBuffer);
+				this.callback(this.scene);
+
+				console.log('IndirectLighting complete:'+(this.endTime - this.indirectTimer)/1000+'s');
+				console.log('Mission complete:'+(this.endTime - this.startTime)/1000+'s');
 				return;
 			}else{
+				this.debug(this.lightmapReadBuffer);
 				this.indirectLighting();
-				// this.debug(this.lightmapReadBuffer);
 			}
 		}
 		
-		
-		
-		this.debug(this.lightmapReadBuffer);
+		// this.debug(this.lightmapReadBuffer);
 		requestAnimationFrame(function(){
 			self.render();
 		});
@@ -237,7 +289,8 @@ LightMapRenderer.prototype = {
 			if(child.isMesh){
 
 				var meshUniforms = this.genMeshUniforms(child);
-				uniforms = uniforms.concat(meshUniforms);
+				if(meshUniforms != false)
+					uniforms = uniforms.concat(meshUniforms);
 				
 			}
 		}
@@ -245,8 +298,17 @@ LightMapRenderer.prototype = {
 		var stepArray = [];
 		while(true){
 			stepArray = uniforms.splice(0, this.uniformArrayStep);
-			if(stepArray.length > 0){
+			// if(stepArray.length > 0){
+			if(stepArray.length == this.uniformArrayStep){
 				this.uniformArray.push(stepArray);	
+			}else if(stepArray.length > 0){
+				var tmp = [0,0,0];
+				var tri = this.createTri( tmp, tmp, tmp, tmp, tmp, tmp, tmp);
+				while(stepArray.length < this.uniformArrayStep){
+					stepArray.push(tri);
+				}
+				this.uniformArray.push(stepArray);
+				break;
 			}else{
 				break;
 			}
@@ -256,6 +318,10 @@ LightMapRenderer.prototype = {
 		return;
 	},
 	genMeshUniforms : function(mesh){
+		if(mesh.geometry instanceof THREE.Geometry){
+			console.error('Geometry is no longer supported!');
+			return false;
+		}
 		var child, geometry, positions, normals, indices, uv2, worldMatrix;
 		var ii, il, i1, i2, i3, pos1, pos2, pos3, nor, uv21, uv22, uv23;
 
@@ -268,25 +334,45 @@ LightMapRenderer.prototype = {
 		uv2 = geometry.attributes.uv2;
 		//need to fix martix and martixWorld
 		worldMatrix = mesh.matrix.elements;
+		if(indices !== null){
+			il = indices.count;
+			for(ii = 0; ii < il; ii++){
+				i1 = indices.array[ii];
+				i2 = indices.array[++ii];
+				i3 = indices.array[++ii];
 
-		il = indices.count;
-		for(ii = 0; ii < il; ii++){
-			i1 = indices.array[ii];
-			i2 = indices.array[++ii];
-			i3 = indices.array[++ii];
-
-			pos1 = this.localToWorld( [positions.array[i1*3], positions.array[i1*3+1], positions.array[i1*3+2]], worldMatrix );
-			pos2 = this.localToWorld( [positions.array[i2*3], positions.array[i2*3+1], positions.array[i2*3+2]], worldMatrix );
-			pos3 = this.localToWorld( [positions.array[i3*3], positions.array[i3*3+1], positions.array[i3*3+2]], worldMatrix );
+				pos1 = this.localToWorld( [positions.array[i1*3], positions.array[i1*3+1], positions.array[i1*3+2]], worldMatrix );
+				pos2 = this.localToWorld( [positions.array[i2*3], positions.array[i2*3+1], positions.array[i2*3+2]], worldMatrix );
+				pos3 = this.localToWorld( [positions.array[i3*3], positions.array[i3*3+1], positions.array[i3*3+2]], worldMatrix );
 
 
-			// nor = (new THREE.Vector3(normals.array[i1*3], normals.array[i1*3+1], normals.array[i1*3+2];)).applyMatrix4 ( worldMatrix );
-			nor = this.normalToWorld( [normals.array[i1*3], normals.array[i1*3+1], normals.array[i1*3+2]], mesh.matrix.clone() );
-			uv21 = [uv2.array[i1*2], uv2.array[i1*2+1]];
-			uv22 = [uv2.array[i2*2], uv2.array[i2*2+1]];
-			uv23 = [uv2.array[i3*2], uv2.array[i3*2+1]];
+				// nor = (new THREE.Vector3(normals.array[i1*3], normals.array[i1*3+1], normals.array[i1*3+2];)).applyMatrix4 ( worldMatrix );
+				nor = this.normalToWorld( [normals.array[i1*3], normals.array[i1*3+1], normals.array[i1*3+2]], mesh.matrix.clone() );
+				uv21 = [uv2.array[i1*2], uv2.array[i1*2+1]];
+				uv22 = [uv2.array[i2*2], uv2.array[i2*2+1]];
+				uv23 = [uv2.array[i3*2], uv2.array[i3*2+1]];
 
-			uniforms.push(this.createTri( pos1, pos2, pos3, nor, uv21, uv22, uv23));
+				uniforms.push(this.createTri( pos1, pos2, pos3, nor, uv21, uv22, uv23));
+			}
+		}else{
+			il = positions.array.length;
+			ii = 0;
+			while(ii < il){
+				pos1 = this.localToWorld( [positions.array[ii], positions.array[ii+1], positions.array[ii+2]], worldMatrix );
+				pos2 = this.localToWorld( [positions.array[ii+3], positions.array[ii+4], positions.array[ii+5]], worldMatrix );
+				pos3 = this.localToWorld( [positions.array[ii+6], positions.array[ii+7], positions.array[ii+8]], worldMatrix );
+
+				nor = [normals.array[ii] + normals.array[ii+3]+ normals.array[ii+6], normals.array[ii+1] + normals.array[ii+4] + normals.array[ii+7], normals.array[ii+2] + normals.array[ii+5] + normals.array[ii+8]]
+
+				i1 = ii / 3 * 2;
+
+				uv21 = [uv2.array[i1], uv2.array[i1+1]];
+				uv22 = [uv2.array[i1+2], uv2.array[i1+3]];
+				uv23 = [uv2.array[i1+4], uv2.array[i1+5]];
+
+				ii += 9;
+				uniforms.push(this.createTri( pos1, pos2, pos3 , nor, uv21, uv22, uv23));
+			}
 		}
 		return uniforms;
 	},
@@ -329,40 +415,61 @@ LightMapRenderer.prototype = {
 			light.uniformArrayOffset = 0;
 		}
 		if(light.uniformArrayOffset == this.uniformArray.length){
+			console.log(light);
+			var time = Date.now();
+			if(this.directTimer.length === 0){
+				console.log('directLight complete :' + (time - this.startTime) / 1000 + 's');
+			}else{
+				console.log('directLight complete :' + (time - this.directTimer[this.directTimer.length - 1]) / 1000 + 's');
+			}
+			this.directTimer.push(time);
 			this.currentDirectLight = null;
 
 			this.merageBuffer(this.directLightingReadBuffer, this.lightmapReadBuffer, this.lightmapWriteBuffer);
-			
 			this.swapLightMapBuffer();
 
 			return;
 		}
 
-		var directLightMapMaterial = new THREE.ShaderMaterial({
-			uniforms : {
+		var self = this;
+
+		function getPointDirectLightingFragmentShader(material, light){
+			var fragmentShader = ShaderLib.pointLightDirectLightingFragmentShader;
+			var uniforms = 
+			{
 				light : {
 					value : {
-						position : this.currentDirectLight.position,
-						color : this.currentDirectLight.color,
-						distance : this.currentDirectLight.distance?this.currentDirectLight.distance:20
+						position : light.position,
+						color : light.color,
+						distance : light?light.distance:100
 					}
 				},
 				tris : { 
-					value : this.uniformArray[light.uniformArrayOffset]
+					value : self.uniformArray[light.uniformArrayOffset]
 				},
-				buffer : { value : light.uniformArrayOffset === 0 ? this.occlusionDefaultTexture : this.directLightingReadBuffer.texture }
-			},
-			vertexShader : ShaderLib.vertexShader,
-			fragmentShader : ShaderLib.pointLightDirectLightingFragmentShader,
-		});
+				buffer : { value : light.uniformArrayOffset === 0 ? self.occlusionDefaultTexture : self.directLightingReadBuffer.texture }
+			};
+			if(material.normalMap){
+				uniforms.normalMap = material.normalMap;
+				fragmentShader = '#define USER_NORMAL_MAP\n'+ ShaderLib.pointLightDirectLightingFragmentShader;
+			}
+			var directLightMapMaterial = new THREE.ShaderMaterial({
+				uniforms : uniforms,
+				vertexShader : ShaderLib.vertexShader,
+				fragmentShader : fragmentShader,
+			});
+
+			return directLightMapMaterial;
+		}
 
 		var i, l, child;
 		for(i = 0, l = this.meshs.length; i < l; i++){
 			child = this.meshs[i];
-			child.material = directLightMapMaterial;
+			child.material = getPointDirectLightingFragmentShader(this.materialsCache[child.uuid], this.currentDirectLight);
 		}
-
+		// this.renderer.clear(true, true, true);
 		this.renderer.render(this.scene, this.viewCamera, this.directLightingWriteBuffer);
+
 
 		var temp = this.directLightingWriteBuffer;
 		this.directLightingWriteBuffer = this.directLightingReadBuffer;
@@ -394,7 +501,7 @@ LightMapRenderer.prototype = {
 				frame : this.indirectLightingPass,
 				lightBuffer : { value : this.directLightingReadBuffer.texture },
 				diffuseBuffer : { value : this.diffuseBuffer.texture },
-				indirectLightingBuffer : { value : this.indirectLightingUniformArrayOffset == 0 ? this.indirectLightingDefaultTexture: this.indrectLightingReadBuffer.texture },
+				indirectLightingBuffer : { value : this.indirectLightingUniformArrayOffset == 0 ? this.indirectLightingDefaultTexture: this.indirectLightingReadBuffer.texture },
 				tris : { 
 					value : this.uniformArray[this.indirectLightingUniformArrayOffset]
 				},
@@ -414,8 +521,7 @@ LightMapRenderer.prototype = {
 		var temp = this.indirectLightingWriteBuffer;
 		this.indirectLightingWriteBuffer = this.indirectLightingReadBuffer;
 		this.indirectLightingReadBuffer = temp;
-
-		this.indirectLightingUniformArrayOffset++;
+		this.indirectLightingUniformArrayOffset += 1;//Math.ceil(Math.random() * 30) ;
 	},
 
 	swapLightMapBuffer : function(){
@@ -423,151 +529,6 @@ LightMapRenderer.prototype = {
 		this.lightmapReadBuffer = this.lightmapWriteBuffer;
 		this.lightmapWriteBuffer = temp;
 	},
-
-	// bakeLightMap2 : function(){
-	// 	this.beginTime = Date.now();
-
-	// 	this.genUV2();
-
-	// 	this.diffuseMapOutput();
-	// 	// this.uniforms = this.genTriangleUniform();
-	// 	var directLightMapMaterial = new THREE.ShaderMaterial({
-	// 		uniforms : {
-	// 			light : {
-	// 				value : {
-	// 					position : this.light.position,
-	// 					color : this.light.color,
-	// 					distance : this.light.distance?this.light.distance:20
-	// 				}
-	// 			},
-	// 			tris : { 
-	// 				value : this.uniforms
-	// 			},
-	// 		},
-	// 		vertexShader : ShaderLib.vertexShader,
-	// 		fragmentShader : ShaderLib.pointLightDirectLightingFragmentShader,
-	// 	});
-
-	// 	var child;
-	// 	for(var i = 0, l = this.scene.children.length; i < l; i++ ){
-	// 		child = this.scene.children[i];
-	// 		if(child.isMesh){
-	// 			child.material = directLightMapMaterial;
-	// 		}
-	// 	}
-
-
-	// 	this.cacheMaterials();
-
-	// 	this.directLightMapBuffer = new THREE.WebGLRenderTarget( 1024, 1024, {
-	// 		wrapS: THREE.RepeatWrapping,
-	// 		wrapT: THREE.RepeatWrapping,
-	// 		minFilter: THREE.NearestFilter,
-	// 		magFilter: THREE.NearestFilter,
-	// 		format: THREE.RGBAFormat,
-	// 		type: THREE.FloatType,
-	// 		stencilBuffer: false,
-	// 		depthBuffer: false
-	// 	});
-
-	// 	this.renderer.render(this.scene, this.viewCamera, this.directLightMapBuffer);
-
-	// 	this.viewQuad.material.uniforms.buffer.value = this.directLightMapBuffer.texture;
-	// 	this.renderer.render(this.viewScene, this.viewCamera);
-
-	// 	this.lightMapBuffer = this.directLightMapBuffer;
-
-	// 	//indirectlight pass;
-
-	// 	this.indirectLightMapMaterial = new THREE.ShaderMaterial({
-	// 		uniforms : {
-	// 			resolution :{ value : new THREE.Vector2(1024, 1024)},
-	// 			frame : this.frame,
-	// 			lightBuffer : { value : this.directLightMapBuffer.texture },
-	// 			diffuseBuffer : { value : this.diffuseBuffer.texture },
-	// 			tris : { 
-	// 				value : this.uniforms
-	// 			},
-	// 		},
-	// 		vertexShader : ShaderLib.vertexShader,
-	// 		fragmentShader : ShaderLib.indirectLightingFragmentShader,
-	// 	});
-
-	// 	for(var i = 0, l = this.scene.children.length; i < l; i++ ){
-	// 		child = this.scene.children[i];
-	// 		if(child.isMesh){
-	// 			child.material = this.indirectLightMapMaterial;
-	// 		}
-	// 	}
-
-	// 	this.writeBuffer = new THREE.WebGLRenderTarget( 1024, 1024, {
-	// 		wrapS: THREE.RepeatWrapping,
-	// 		wrapT: THREE.RepeatWrapping,
-	// 		minFilter: THREE.NearestFilter,
-	// 		magFilter: THREE.NearestFilter,
-	// 		format: THREE.RGBAFormat,
-	// 		type: THREE.FloatType,
-	// 		stencilBuffer: false,
-	// 		depthBuffer: false
-	// 	});
-
-
-	// 	this.lightWriteBuffer = this.writeBuffer.clone();
-		
-	// 	this.indirectLightPass();
-
-
-	// },
-	// indirectLightPass : function(){
-
-	// 	this.renderer.render(this.scene, this.viewCamera, this.writeBuffer);
-	// 	this.indirectLightMapMaterial.uniforms.frame.value += 1;
-
-	// 	this.lightWriteBuffer = this.merageBuffer(this.writeBuffer, this.lightMapBuffer, this.lightWriteBuffer);
-
-	// 	var temp = this.lightWriteBuffer;
-	// 	this.lightWriteBuffer = this.lightMapBuffer;
-	// 	this.lightMapBuffer = temp;
-
-	// 	this.viewQuad.material.uniforms.buffer.value = this.lightMapBuffer.texture;
-
-	// 	this.indirectLightMapMaterial.uniforms.lightBuffer.value = this.lightMapBuffer.texture;
-
-	// 	this.renderer.render(this.viewScene, this.viewCamera);
-
-	// 	if(this.frame.value >= 10){
-	// 		// this.lightMapBuffer.texture.flipY = false;
-			
-	// 		this.lightMapBuffer.needsUpdate = true;
-
-	// 		// this.denoise();
-
-	// 		// denoise
-	// 		this.viewQuad.material = new THREE.ShaderMaterial({
-	// 			uniforms : {
-	// 				buffer : { value : this.lightMapBuffer.texture },
-	// 				resolution : {value : new THREE.Vector2(1024, 1024)},
-	// 			},
-	// 			vertexShader : ShaderLib.debugVertexShader,
-	// 			fragmentShader : ShaderLib.denoiseFragmentShader,
-	// 		})
-
-	// 		this.renderer.setSize(1024, 1024);
-	// 		this.renderer.render(this.viewScene, this.viewCamera);
-
-	// 		this.restoreScene(this.lightMapBuffer.texture);
-	// 		this.callback();
-	// 		console.log('end');
-
-	// 		this.endTime = Date.now();
-	// 		console.log(this.endTime - this.beginTime);
-	// 		return;
-	// 	}
-	// 	var self = this;
-	// 	requestAnimationFrame(function(){
-	// 		self.indirectLightPass();
-	// 	});
-	// },
 
 	merageBuffer : function(buffer1 , buffer2, buffer3){
 
@@ -582,26 +543,7 @@ LightMapRenderer.prototype = {
 		return buffer3;
 
 	},
-	
-	
-	restoreScene : function(lightMap){
-		var scene = this.scene;
-		var child;
-		for(var i = 0 , l = scene.children.length; i < l ; i++){
-			child = scene.children[i];
-			if(child instanceof THREE.Object3D){
-				if(child.isMesh){
-					child.material = this.materialsCache[child.uuid];
-					if(lightMap !== undefined)
-					child.material.lightMap = lightMap;
-					child.material.needUpdate = true;
-				}else if(child.isPointLight){
-					scene.remove(child);
-				}
-			}
-		}
-
-	},
+		
 	diffuseMapOutput : function(){
 		var scene = this.scene;
 		var child;
@@ -648,6 +590,10 @@ LightMapRenderer.prototype = {
 			depthBuffer: false
 		});
 		this.renderer.render(this.scene, this.viewCamera, this.diffuseBuffer);
+
+		// this.readPixels();
+		// this.debug(this.directLightingReadBuffer);
+		// throw 123;
 	},
 
 	MRAMapOutput: function(){
@@ -728,6 +674,13 @@ LightMapRenderer.prototype = {
 		this.renderer.render(this.viewScene, this.viewCamera);
 		return;
 	},
+	readPixels : function(){
+		var gl = this.renderer.context;
+		var data = new Float32Array(this.width * this.height * 4);
+
+		gl.readPixels(0, 0, this.width, this.height, gl.RGBA , gl.FLOAT, data);
+		console.log(data);
+	},
 	exportScene : function(){
 		var gltfExporter = new THREE.GLTFExporter();
 
@@ -742,7 +695,36 @@ LightMapRenderer.prototype = {
 			link.click();
 			
 		}, {} );
-	}
+	},
+	exportJSON : function(){
+		var link = document.createElement( 'a' );
+		link.download = 'scene.gltf';
+		var result = this.scene.toJSON();
+		var output = JSON.stringify( result, null, 2 );
+		var blob = new Blob( [ output ], { type: 'text/plain' } );
+		link.href = URL.createObjectURL( blob );
+		
+		link.click();
+	
+	},
+	restoreScene : function(){
+
+		this.lightmapReadBuffer.texture.flipY = false;
+		var child;
+		for(var i = 0 , l = this.meshs.length; i < l ; i++){
+			child = this.meshs[i];
+			
+			child.material = this.materialsCache[child.uuid];
+
+			child.material.lightMap = this.lightmapReadBuffer.texture;
+			child.material.needUpdate = true;
+		
+			
+		}
+
+		console.log(this.scene);
+
+	},
 
 }
 

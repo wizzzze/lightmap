@@ -42,10 +42,14 @@ var LightMapRenderer = function(scene,callback){
 	this.renderer.setClearColor(new THREE.Color( 0 , 0 , 0 ), 1);
 	document.body.appendChild(this.renderer.domElement);
 
+	
+	// renderer.gammaInput = true;
+	// renderer.gammaOutput = true;
+
 	this.viewScene = new THREE.Scene();
 	// this.viewScene.background = new THREE.Color(0,0,0);
-	this.viewCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
-	this.viewCamera.position.set( 0, 0, 1 );
+	this.viewCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
+	this.viewCamera.position.set( 0, 0, 100 );
 
 	var quad = new THREE.PlaneBufferGeometry( 2 , 2 );
 	this.viewMaterial = new THREE.ShaderMaterial({
@@ -85,6 +89,8 @@ var LightMapRenderer = function(scene,callback){
 LightMapRenderer.prototype = {
 	init : function(){
 		var scene = this.scene;
+
+
 		for(var i = 0, l = scene.children.length; i < l ; i ++){
 			var child = scene.children[i];
 			if(child.isMesh){
@@ -113,6 +119,9 @@ LightMapRenderer.prototype = {
 		this.height = this.uv2.mapHeight;
 
 
+
+		this.genTriangleUniform();
+		
 		this.renderer.setSize(this.width ,this.height);
 
 		this.merageQuad.material.uniforms.res.value = new THREE.Vector2(this.width, this.height);
@@ -159,7 +168,6 @@ LightMapRenderer.prototype = {
 		this.indirectLightingWriteBuffer = null;
 		this.indirectLightingReadBuffer = null;
 
-		this.genTriangleUniform();
 
 		this.renderFlag = LightMapRenderer.directLighting;
 
@@ -203,7 +211,8 @@ LightMapRenderer.prototype = {
 						stencilBuffer: false,
 						depthBuffer: false
 					});
-
+					// this.lightmapReadBuffer = this.blur(this.lightmapReadBuffer);
+					this.expand();
 					this.debug(this.lightmapReadBuffer);
 
 					this.indirectLightingReadBuffer = this.indirectLightingWriteBuffer.clone();
@@ -235,10 +244,10 @@ LightMapRenderer.prototype = {
 				if(this.indirectLightingSamplePass > this.indirectLightingSampleMaxPass){
 					// this.lightmapReadBuffer = this.denoise(this.lightmapReadBuffer);
 					this.lightmapReadBuffer = this.blur(this.lightmapReadBuffer);
+					this.expand();
 					//expand
 
 					this.debug(this.lightmapReadBuffer);
-					this.expand();
 
 					this.endTime = Date.now();
 					this.restoreScene();
@@ -308,6 +317,8 @@ LightMapRenderer.prototype = {
 
 		var uniforms = [];
 
+		mesh.surfaceArea = 0;
+
 		geometry = mesh.geometry;
 		normals = geometry.attributes.normal;
 		positions = geometry.attributes.position;
@@ -356,6 +367,10 @@ LightMapRenderer.prototype = {
 			}
 		}
 		return uniforms;
+	},
+
+	calSurfaceArea : function(pos1, pos2, pos3){
+		return (pos2);
 	},
 	localToWorld : function(pos , e){
 		var w = 1 / ( e[ 3 ] * pos[0] + e[ 7 ] * pos[1] + e[ 11 ] * pos[2] + e[ 15 ] );
@@ -549,6 +564,8 @@ LightMapRenderer.prototype = {
 			this.indirectLightingPass++;
 			this.indirectLightingReadBuffer = this.blur2(this.indirectLightingReadBuffer);
 
+			this.indirectLightingReadBuffer = this.blur(this.indirectLightingReadBuffer);
+			// this.indirectLightingReadBuffer = this.blur2(this.indirectLightingReadBuffer);
 			this.debug(this.indirectLightingReadBuffer);
 		
 			// this.merageBuffer(this.indirectLightingReadBuffer, this.indirectLightingMainReadBuffer, this.indirectLightingMainWriteBuffer);
@@ -813,9 +830,13 @@ LightMapRenderer.prototype = {
 	},
 
 	blur : function(buffer){
+		if(!this.indexBuffer){
+			this.indexOutput();
+		}
 		this.viewQuad.material = new THREE.ShaderMaterial({
 			uniforms : {
 				buffer : {value : buffer.texture} ,
+				indexBuffer : {value : this.indexBuffer.texture},
 				resolution : {value : new THREE.Vector2(this.width, this.height)}
 			},
 			vertexShader : ShaderLib.debugVertexShader,
@@ -916,7 +937,7 @@ LightMapRenderer.prototype = {
 		//cpu version
 
 		
-		var gl = this.renderer.context;
+		/*var gl = this.renderer.context;
 
 
 		this.data = new Float32Array(this.width * this.height * 4);
@@ -935,27 +956,31 @@ LightMapRenderer.prototype = {
 		var dataTexture = new THREE.DataTexture(this.expandData,  this.width, this.height, THREE.RGBAFormat);
 
 		this.debug(dataTexture);
-		throw 123;
+		*/
 		
 
 		//gpu version
 
-		// var expandMaterial = new THREE.ShaderMaterial({
-		// 	uniforms : {
-		// 		buffer : { value : this.lightmapReadBuffer.texture },
-		// 		indexBuffer : { value : this.indexBuffer.texture },
 
-		// 	},
 
-		// 	vertexShader : ShaderLib.debugVertexShader,
-		// 	fragmentShader : ShaderLib.expand,
-		// });
+		if(!this.indexBuffer){
+			this.indexOutput();
+		}
+		var expandMaterial = new THREE.ShaderMaterial({
+			uniforms : {
+				buffer : { value : this.lightmapReadBuffer.texture },
+				indexBuffer : { value : this.indexBuffer.texture },
+				resolution : { value : new THREE.Vector2(this.width, this.height)}
+			},
 
-		// this.viewQuad.material = expandMaterial;
-		// this.renderer.render(this.viewScene, this.viewCamera, this.lightmapWriteBuffer);
-		// this.swapLightMapBuffer();
-		// this.debug(this.lightmapReadBuffer);
-		// throw 123;
+			vertexShader : ShaderLib.debugVertexShader,
+			fragmentShader : ShaderLib.expand,
+		});
+
+		this.viewQuad.material = expandMaterial;
+		this.renderer.render(this.viewScene, this.viewCamera, this.lightmapWriteBuffer);
+		this.swapLightMapBuffer();
+		this.debug(this.lightmapReadBuffer);
 
 	},
 	expandUnit : function(unit){

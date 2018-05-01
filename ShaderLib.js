@@ -49,7 +49,7 @@ uniform sampler2D buffer;
 	
 #endif
 
-const float adapted_lum = 0.8;
+const float adapted_lum = 0.6;
 
 vec3 ACESToneMapping(vec3 color)
 {
@@ -299,7 +299,7 @@ vec2 hash2() {
     return fract(sin(vec2(seed2+=0.1,seed2+=0.1))*vec2(43758.5453123,22578.1459123));
 }
 
-const float adapted_lum = 1.;
+const float adapted_lum = 0.6;
 
 vec3 ACESToneMapping(vec3 color)
 {
@@ -321,8 +321,8 @@ vec3 cosWeightedRandomHemisphereDirection( const vec3 n ) {
 	vec3  vv = cross( uu, n );
 	
 	float ra = sqrt(r.y);
-	float rx = ra*cos(25.1327412287*r.x); 
-	float ry = ra*sin(25.1327412287*r.x);
+	float rx = ra*cos(6.2831*r.x); 
+	float ry = ra*sin(6.2831*r.x);
 	float rz = sqrt( 1.0-r.y );
 	vec3  rr = vec3( rx*uu + ry*vv + rz*n );
     
@@ -430,20 +430,20 @@ indexOutputShader : `
 uniform int index;
 
 void main(){
-	vec4 indexColor = vec4(0.);
+	vec3 indexColor = vec3(0.);
 	if(index > 100){
 		indexColor.x = 1.;
 		if(index > 200){
 			indexColor.y = 1.;
 			indexColor.z = float(index - 200) / 100.;
 		}else{
-			indexColor.y = float(index - 100)/ 100.;
+			indexColor.y = float(index - 100) / 100.;
 		}
 	}else{
-		indexColor.x = float(index)/100.;
+		indexColor.x = float(index) / 100.;
 	}
 
-	gl_FragColor = indexColor;
+	gl_FragColor = vec4(indexColor, 1.);
 
 }
 `,
@@ -630,8 +630,36 @@ void main(){
 blurFragmentShader : `
 uniform sampler2D buffer;
 uniform vec2 resolution;
-
+uniform sampler2D indexBuffer;
 varying vec2 vUv;
+
+// void getSample(vec2 uv, float index, inout float weight, out vec3 color){
+// 	vec3 biasIndex = texture2D(indexBuffer, uv).xyz;
+// 	float i = ( biasIndex.x + biasIndex.y + biasIndex.z ) * 100.;
+// 	color = vec3(0.);
+// 	if(i < index + 0.5 && i > index - 0.5){
+// 		color = texture2D(buffer, uv).xyz;
+// 		return;
+// 	}else{
+// 		weight = 0.;
+// 		return;
+// 	}
+// }
+
+void getSample(vec2 uv, float x, float index, out float weight, out vec3 color){
+	weight = 0.;
+	color = vec3(0.);
+	for(float i = -1.; i < 2.; i+=1.){
+		vec3 biasIndex = texture2D(indexBuffer, vec2(uv.x + i / resolution.x , uv.y)).xyz;
+		float ind = (biasIndex.x + biasIndex.y + biasIndex.z) * 100.;
+		if(ind < index + 1. && ind > index - 1.){
+			weight += 4. - abs(x) - abs(i);
+			color += (texture2D(buffer, vec2(uv.x + i / resolution.x , uv.y)).xyz) * ( 4. - abs(x) - abs(i));
+		}else{
+			continue;
+		}
+	}
+}
 
 void main(){
 
@@ -639,24 +667,89 @@ void main(){
 	float coordY = resolution.y * vUv.y;
 
 	vec4 color = texture2D(buffer, vUv);
+	vec3 vi = texture2D(indexBuffer, vUv).xyz;
+	float index = (vi.x + vi.y + vi.z) * 100.;
 
-	vec4 color1 = texture2D(buffer, vec2((coordX - 1.)/resolution.x , (coordY + 1.)/resolution.y));
-	vec4 color2 = texture2D(buffer, vec2(vUv.x , (coordY + 1.)/resolution.y));
-	vec4 color3 = texture2D(buffer, vec2((coordX + 1.)/resolution.x , (coordY + 1.)/resolution.y));
+	vec3 outputColor = vec3(0.);
+	float outputWeight = 0.;
 
-	vec4 color4 = texture2D(buffer, vec2((coordX - 1.)/resolution.x , vUv.y));
+	for(float i = -1.; i < 2.; i += 1.){
+		vec3 color;float weight;
+		getSample( vec2(vUv.x , (coordY + i)/resolution.y), i, index, weight, color);
+		outputColor += color;
+		outputWeight += weight;
+	}
+
+	// vec3 color1;
+	// float weight1 = 2.;
+	// getSample(vec2((coordX - 1.)/resolution.x , (coordY + 1.)/resolution.y), index, weight1, color1);
+	// outputColor +=color1;
+	// outputWeight += weight1;
+
+	// vec3 color2;
+	// float weight2 = 3.;
+	// getSample(vec2(vUv.x , (coordY + 1.)/resolution.y), index, weight2, color2);
+	// outputColor +=color2;
+	// outputWeight += weight2;
+
+
+	// vec3 color3;
+	// float weight3 = 2.;
+	// getSample(vec2((coordX + 1.)/resolution.x , (coordY + 1.)/resolution.y), index, weight3, color3);
+	// outputColor +=color3;
+	// outputWeight += weight3;
+
+
+	// vec3 color4;
+	// float weight4 = 3.;
+	// getSample(vec2((coordX + 1.)/resolution.x , vUv.y), index, weight4, color4);
+	// outputColor +=color4;
+	// outputWeight += weight4;
+
+
+	// vec3 color6;
+	// float weight6 = 3.;
+	// getSample(vec2((coordX - 1.)/resolution.x , vUv.y), index, weight6, color6);
+	// outputColor +=color6;
+	// outputWeight += weight6;
+
+
+	// vec3 color7;
+	// float weight7 = 2.;
+	// getSample(vec2((coordX + 1.)/resolution.x , (coordY - 1.)/resolution.y), index, weight7, color7);
+	// outputColor +=color7;
+	// outputWeight += weight7;
+
+	// vec3 color8;
+	// float weight8 = 3.;
+	// getSample(vec2(vUv.x , (coordY - 1.)/resolution.y), index, weight8, color8);
+	// outputColor +=color8;
+	// outputWeight += weight8;
+
+	// vec3 color9;
+	// float weight9 = 2.;
+	// getSample(vec2((coordX - 1.)/resolution.x , (coordY - 1.)/resolution.y), index, weight9, color9);
+	// outputColor +=color9;
+	// outputWeight += weight9;
+
+	// vec4 color1 = texture2D(buffer, vec2((coordX - 1.)/resolution.x , (coordY + 1.)/resolution.y));
+	// vec4 color2 = texture2D(buffer, vec2(vUv.x , (coordY + 1.)/resolution.y));
+	// vec4 color3 = texture2D(buffer, vec2((coordX + 1.)/resolution.x , (coordY + 1.)/resolution.y));
+
+	// vec4 color4 = texture2D(buffer, vec2((coordX - 1.)/resolution.x , vUv.y));
 	
-	vec4 color6 = texture2D(buffer, vec2((coordX + 1.)/resolution.x , vUv.y));
+	// vec4 color6 = texture2D(buffer, vec2((coordX + 1.)/resolution.x , vUv.y));
 
-	vec4 color7 = texture2D(buffer, vec2((coordX - 1.)/resolution.x , (coordY - 1.)/resolution.y));
-	vec4 color8 = texture2D(buffer, vec2(vUv.x , (coordY - 1.)/resolution.y));
-	vec4 color9 = texture2D(buffer, vec2((coordX + 1.)/resolution.x , (coordY - 1.)/resolution.y));
+	// vec4 color7 = texture2D(buffer, vec2((coordX - 1.)/resolution.x , (coordY - 1.)/resolution.y));
+	// vec4 color8 = texture2D(buffer, vec2(vUv.x , (coordY - 1.)/resolution.y));
+	// vec4 color9 = texture2D(buffer, vec2((coordX + 1.)/resolution.x , (coordY - 1.)/resolution.y));
 
 
-	color = color1 * 2. + color2 * 3. + color3 * 2. + color4 * 3. + color * 3. + color6 * 3. + color7 * 2. + color8 * 3. + color9 * 2.;
-	color /= 24.;
+	// color = color1 * 2. + color2 * 3. + color3 * 2. + color4 * 3. + color * 4. + color6 * 3. + color7 * 2. + color8 * 3. + color9 * 2.;
+	// color /= 24.;
+	outputColor /= outputWeight;
 
-	gl_FragColor = vec4(color.xyz, 1.);
+	gl_FragColor = vec4(outputColor.xyz, 1.);
 
 }
 `,
@@ -675,25 +768,24 @@ varying vec2 vUv;
 #define STDEV 6.5
 
 float gaussian(float r, float c) {
-    return exp(-r*c/(STDEV*STDEV));
+	float g = abs( r * c );
+    return exp(g/(STDEV*STDEV));
 }
 
 void getColor(in float ci,in vec2 coord, in float i, out vec3 color, out float weight){
 	vec3 addColor = vec3(0.);
 	float totalWeight = 0.00001;
-	for(float n = -12.; n <= 12.; n += 1.){
+	for(float n = -16.; n <= 16.; n += 1.){
 		vec2 uv = vec2(coord.x + float(n), coord.y)/resolution;
-		// if((abs(n) + abs(i)) > 10.) continue;
+		if((abs(n) + abs(i)) > 18.) continue;
 		if(coord.x + n > resolution.x || coord.x + n < 0. || coord.y > resolution.y || coord.y < 0.){
 			continue;
 		}else{
 			vec4 index = texture2D(indexBuffer, uv);
 			float ni = (index.x + index.y + index.z) * 100.;
 			if(ni < ci + 0.1 && ni > ci - 0.1){
-				vec4 colori = texture2D(buffer, uv);
-				if(colori.x + colori.y + colori.z > 0.){
-					totalWeight += gaussian(i, n);
-				}
+				vec4 colori = texture2D(buffer, uv) * gaussian(i, n);
+				totalWeight += gaussian(i, n);
 				addColor += colori.xyz;
 			}
 		}
@@ -712,9 +804,9 @@ void main(){
 
 	vec4 index = texture2D(indexBuffer, vUv);
 	float ci = (index.x + index.y + index.z) * 100.;
-	if(ci > 0.){
+	if(ci > 0. && ci < 100.){
 
-		for(float i = -12.; i <= 12.; i+=1.){
+		for(float i = -16.; i <= 16.; i+=1.){
 			vec3 addColor;
 			float addWeight;
 			getColor(ci, vec2(coordX, coordY + i), i, addColor, addWeight);
@@ -742,7 +834,7 @@ uniform vec2 resolution;
 uniform int frame;
 
 
-#define STDEV 6.5
+#define STDEV 0.5
 #define RADIUS 12.0
 
 float gaussian(float x) {
@@ -816,6 +908,100 @@ expand : `
 varying vec2 vUv;
 uniform sampler2D indexBuffer;
 uniform sampler2D buffer;
+uniform vec2 resolution;
+
+
+vec3 getColor(float i, vec2 uv){
+	vec3 color = vec3(0.);
+	float weight = 0.1;
+	for(float i = -2.; i < 3.; i += 1.){
+		vec3 c = texture2D(buffer, vec2(uv.x , uv.y + i / resolution.y)).xyz;
+		if(c.x + c.y + c.z > 0.){
+			weight += 1.;
+		}
+	}
+
+	return color / weight;
+}
+
+void main(){
+	vec4 ib = texture2D(indexBuffer, vUv);
+	float index = (ib.x + ib.y + ib.z) * 100.;
+	if(index > 0. && index < 100.){
+		gl_FragColor = texture2D(buffer, vUv);
+		
+	}else{
+		// vec3 color = vec3(0.);
+		// for(float i = -2.; i < 3.; i += 1.){
+		// 	color += getColor(i, vec2(vUv.x + i / resolution.x, vUv.y));
+		// }
+		// color /= 3.;
+
+		vec4 color;
+		float i;
+
+		color = texture2D(indexBuffer, vec2(vUv.x + 1. / resolution.x, vUv.y));
+		i = color.x + color.y + color.z;
+		if(i > 0. && i < 1.){
+			gl_FragColor = texture2D(buffer, vec2(vUv.x + 1. / resolution.x, vUv.y));
+			return;
+		}
+		color = texture2D(indexBuffer, vec2(vUv.x - 1. / resolution.x, vUv.y));
+		i = color.x + color.y + color.z;
+		if(i > 0. && i < 1.){
+			gl_FragColor = texture2D(buffer, vec2(vUv.x - 1. / resolution.x, vUv.y));
+			return;
+		}
+
+		color = texture2D(indexBuffer, vec2(vUv.x , vUv.y + 1. / resolution.y));
+		i = color.x + color.y + color.z;
+		if(i > 0. && i < 1.){
+			gl_FragColor = texture2D(buffer, vec2(vUv.x , vUv.y + 1. / resolution.y));
+			return;
+		}
+		color = texture2D(indexBuffer, vec2(vUv.x, vUv.y - 1. / resolution.y));
+		i = color.x + color.y + color.z;
+		if(i > 0. && i < 1.){
+			gl_FragColor = texture2D(buffer, vec2(vUv.x, vUv.y - 1. / resolution.y));
+			return;
+		}
+
+		color = texture2D(indexBuffer, vec2(vUv.x + 1. / resolution.x, vUv.y + 1. / resolution.y));
+		i = color.x + color.y + color.z;
+		if(i > 0. && i < 1.){
+			gl_FragColor = texture2D(buffer, vec2(vUv.x + 1. / resolution.x, vUv.y + 1. / resolution.y));
+			return;
+		}
+		color = texture2D(indexBuffer, vec2(vUv.x - 1. / resolution.x, vUv.y + 1. / resolution.y));
+		i = color.x + color.y + color.z;
+		if(i > 0. && i < 1.){
+			gl_FragColor = texture2D(buffer, vec2(vUv.x - 1. / resolution.x, vUv.y + 1. / resolution.y));
+			return;
+		}
+
+		color = texture2D(indexBuffer, vec2(vUv.x  + 1. / resolution.x, vUv.y + 1. / resolution.y));
+		i = color.x + color.y + color.z;
+		if(i > 0. && i < 1.){
+			gl_FragColor = texture2D(buffer, vec2(vUv.x  + 1. / resolution.x, vUv.y + 1. / resolution.y));
+			return;
+		}
+		color = texture2D(indexBuffer, vec2(vUv.x  - 1. / resolution.x, vUv.y - 1. / resolution.y));
+		i = color.x + color.y + color.z;
+		if(i > 0. && i < 1.){
+			gl_FragColor = texture2D(buffer, vec2(vUv.x  - 1. / resolution.x, vUv.y - 1. / resolution.y));
+			return;
+		}
+		gl_FragColor = texture2D(buffer, vUv);
+	}
+}
+
+`,
+
+expand2 : `
+
+varying vec2 vUv;
+uniform sampler2D buffer;
+uniform vec2 resolution;
 
 
 vec3 getColor(float i, vec2 uv){
@@ -832,20 +1018,58 @@ vec3 getColor(float i, vec2 uv){
 }
 
 void main(){
-	vec4 ib = texture2D(indexBuffer, vUv);
-	float index = (ib.x + ib.y + ib.z) * 100.;
-	if(ib.x == ib.z){
-		gl_FragColor = texture2D(buffer, vUv);
-		
-	}else{
-		vec3 color = vec3(0.);
-		for(float i = -2.; i < 3.; i += 1.){
-			color += getColor(i, vec2(vUv.x + i, vUv.y));
+	vec4 cc = texture2D(buffer , vUv);
+
+	if(cc.x + cc.y + cc.z < 0.00001){
+		vec4 color;
+		gl_FragColor = vec4(0., 0., 0., 1.);
+		return;
+		color = texture2D(buffer, vec2(vUv.x + 1. / resolution.x, vUv.y));
+		if(color.x + color.y + color.z > 0.){
+			gl_FragColor = color;
+			return;
 		}
-		color /= 3.;
-		gl_FragColor = vec4(color, 1.);
+		color = texture2D(buffer, vec2(vUv.x - 1. / resolution.x, vUv.y));
+		if(color.x + color.y + color.z > 0.){
+			gl_FragColor = color;
+			return;
+		}
+
+		color = texture2D(buffer, vec2(vUv.x , vUv.y + 1. / resolution.y));
+		if(color.x + color.y + color.z > 0.){
+			gl_FragColor = color;
+			return;
+		}
+		color = texture2D(buffer, vec2(vUv.x, vUv.y - 1. / resolution.y));
+		if(color.x + color.y + color.z > 0.){
+			gl_FragColor = color;
+			return;
+		}
+
+		color = texture2D(buffer, vec2(vUv.x + 1. / resolution.x, vUv.y + 1. / resolution.y));
+		if(color.x + color.y + color.z > 0.){
+			gl_FragColor = color;
+			return;
+		}
+		color = texture2D(buffer, vec2(vUv.x - 1. / resolution.x, vUv.y + 1. / resolution.y));
+		if(color.x + color.y + color.z > 0.){
+			gl_FragColor = color;
+			return;
+		}
+
+		color = texture2D(buffer, vec2(vUv.x  + 1. / resolution.x, vUv.y + 1. / resolution.y));
+		if(color.x + color.y + color.z > 0.){
+			gl_FragColor = color;
+			return;
+		}
+		color = texture2D(buffer, vec2(vUv.x  - 1. / resolution.x, vUv.y - 1. / resolution.y));
+		if(color.x + color.y + color.z > 0.){
+			gl_FragColor = color;
+			return;
+		}
+	}else{
+		gl_FragColor = cc;
 	}
-	// gl_FragColor = texture2D(buffer, vUv);
 }
 
 `,
